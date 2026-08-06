@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Исследование Google Play и App Store 2026: топы по выручке и загрузкам, скоринг 22 референсов под концепт 2D-постапокалипсиса.">
+</head>
+<body>
+<title>Досье рынка 2026 — 2D-постапокалипсис</title>
+<style>
+  :root{
+    --ground:#E7E3D7; --surface:#F4F1E9; --sunken:#DEDACB;
+    --ink:#191A14; --ink-2:#43453A; --muted:#6D6E60;
+    --rule:#CBC5B3; --rule-soft:#DAD5C6;
+    --accent:#A6431C; --accent-soft:#C97A50;
+    --moss:#4F6635; --amber:#8C6410;
+    --bar-1:#E0D3C3; --bar-2:#A6431C;
+    --shadow:0 1px 0 rgba(25,26,20,.06);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --ground:#111309; --surface:#191C11; --sunken:#0C0E07;
+      --ink:#EBE8D9; --ink-2:#C3C1B0; --muted:#8F9180;
+      --rule:#2F3323; --rule-soft:#242819;
+      --accent:#E07A42; --accent-soft:#B4623A;
+      --moss:#9BB771; --amber:#D9A63F;
+      --bar-1:#2B2F1E; --bar-2:#E07A42;
+      --shadow:none;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#111309; --surface:#191C11; --sunken:#0C0E07;
+    --ink:#EBE8D9; --ink-2:#C3C1B0; --muted:#8F9180;
+    --rule:#2F3323; --rule-soft:#242819;
+    --accent:#E07A42; --accent-soft:#B4623A;
+    --moss:#9BB771; --amber:#D9A63F;
+    --bar-1:#2B2F1E; --bar-2:#E07A42;
+    --shadow:none;
+  }
+  :root[data-theme="light"]{
+    --ground:#E7E3D7; --surface:#F4F1E9; --sunken:#DEDACB;
+    --ink:#191A14; --ink-2:#43453A; --muted:#6D6E60;
+    --rule:#CBC5B3; --rule-soft:#DAD5C6;
+    --accent:#A6431C; --accent-soft:#C97A50;
+    --moss:#4F6635; --amber:#8C6410;
+    --bar-1:#E0D3C3; --bar-2:#A6431C;
+    --shadow:0 1px 0 rgba(25,26,20,.06);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:16px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace}
+  .wrap{max-width:1060px; margin:0 auto; padding:0 20px 96px}
+
+  /* ---------- шапка ---------- */
+  .head{border-bottom:2px solid var(--ink); padding:40px 0 18px; margin-bottom:34px}
+  .stamp{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px;
+    letter-spacing:.18em; text-transform:uppercase; color:var(--accent);
+    display:flex; flex-wrap:wrap; gap:14px; align-items:center;
+  }
+  .stamp span:not(:last-child)::after{content:" ·"; color:var(--muted)}
+  h1{
+    font-size:clamp(30px,5.2vw,54px); line-height:1.03; margin:16px 0 10px;
+    font-weight:800; letter-spacing:-.022em; text-wrap:balance;
+    font-stretch:condensed;
+  }
+  .lede{font-size:clamp(16px,1.9vw,19px); color:var(--ink-2); max-width:62ch; margin:0 0 22px}
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px; background:var(--rule); border:1px solid var(--rule)}
+  .kpi{background:var(--surface); padding:14px 16px}
+  .kpi b{display:block; font-size:26px; line-height:1.15; font-variant-numeric:tabular-nums; letter-spacing:-.02em}
+  .kpi small{display:block; color:var(--muted); font-size:11.5px; letter-spacing:.09em; text-transform:uppercase; margin-top:5px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  /* ---------- секции ---------- */
+  section{margin:0 0 56px; scroll-margin-top:20px}
+  .sec-head{display:flex; gap:14px; align-items:baseline; border-bottom:1px solid var(--ink); padding-bottom:8px; margin-bottom:20px}
+  .sec-head .code{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; color:var(--accent);
+    letter-spacing:.1em; flex:none;
+  }
+  h2{font-size:clamp(20px,2.6vw,27px); margin:0; font-weight:750; letter-spacing:-.015em; font-stretch:condensed}
+  .sec-note{color:var(--muted); font-size:13.5px; margin:-10px 0 20px; max-width:70ch}
+  h3{font-size:16px; margin:26px 0 10px; font-weight:700; letter-spacing:-.005em}
+
+  /* ---------- таблицы ---------- */
+  .scroll{overflow-x:auto; border:1px solid var(--rule); background:var(--surface)}
+  table{border-collapse:collapse; width:100%; min-width:640px; font-size:14px}
+  th,td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--rule-soft); vertical-align:top}
+  thead th{
+    position:sticky; top:0; background:var(--sunken); color:var(--ink-2);
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; font-weight:600;
+    letter-spacing:.07em; text-transform:uppercase; border-bottom:1px solid var(--rule);
+  }
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover td{background:var(--sunken)}
+  td.num{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  td.name{font-weight:650; white-space:nowrap}
+  .rank{color:var(--muted); font-variant-numeric:tabular-nums;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; width:34px}
+
+  /* ---------- метры ---------- */
+  .meter{display:flex; align-items:center; gap:10px; min-width:190px}
+  .track{position:relative; height:8px; flex:1; background:var(--bar-1); border-radius:4px; overflow:hidden}
+  .fill{position:absolute; inset:0 auto 0 0; background:var(--bar-2); border-radius:0 4px 4px 0}
+  .meter .val{font-variant-numeric:tabular-nums; font-size:13px; width:34px; text-align:right;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  .revbar{display:flex; align-items:center; gap:10px; min-width:170px}
+  .revbar .track{height:10px; border-radius:2px}
+  .revbar .fill{border-radius:0 2px 2px 0}
+
+  /* ---------- чипы ---------- */
+  .chip{
+    display:inline-block; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:10.5px; letter-spacing:.06em; text-transform:uppercase;
+    padding:2px 7px; border:1px solid var(--rule); border-radius:2px; color:var(--ink-2); white-space:nowrap;
+  }
+  .chip.f2p{color:var(--moss); border-color:var(--moss)}
+  .chip.prem{color:var(--amber); border-color:var(--amber)}
+  .chip.key{color:var(--accent); border-color:var(--accent)}
+
+  /* ---------- карточки категорий ---------- */
+  .cats{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:1px; background:var(--rule); border:1px solid var(--rule)}
+  .cat{background:var(--surface); padding:16px 18px}
+  .cat .code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; letter-spacing:.12em; color:var(--accent)}
+  .cat h4{margin:6px 0 8px; font-size:16px; font-weight:700; letter-spacing:-.01em}
+  .cat p{margin:0 0 10px; font-size:13.5px; color:var(--ink-2)}
+  .cat .games{font-size:12.5px; color:var(--muted); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; line-height:1.7}
+  .cat .stat{display:flex; gap:16px; margin-top:10px; padding-top:10px; border-top:1px solid var(--rule-soft);
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; color:var(--muted); letter-spacing:.04em}
+  .cat .stat b{color:var(--ink); font-variant-numeric:tabular-nums}
+
+  /* ---------- выводы ---------- */
+  .finds{display:grid; gap:1px; background:var(--rule); border:1px solid var(--rule)}
+  .find{background:var(--surface); padding:16px 18px; display:grid; grid-template-columns:56px 1fr; gap:16px}
+  .find .idx{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; color:var(--accent); letter-spacing:.1em; padding-top:3px}
+  .find h4{margin:0 0 5px; font-size:16.5px; font-weight:700; letter-spacing:-.012em; text-wrap:balance}
+  .find p{margin:0; font-size:14.5px; color:var(--ink-2); max-width:70ch}
+
+  /* ---------- рецепт ---------- */
+  .recipe{border:2px solid var(--ink); background:var(--surface)}
+  .recipe .rh{padding:14px 18px; border-bottom:1px solid var(--rule); display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:baseline}
+  .recipe .rh strong{font-size:17px; letter-spacing:-.01em}
+  .recipe .rh span{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; color:var(--muted); letter-spacing:.08em; text-transform:uppercase}
+  .recipe ul{margin:0; padding:14px 18px 18px 34px}
+  .recipe li{margin:0 0 9px; font-size:14.5px; color:var(--ink-2)}
+  .recipe li b{color:var(--ink)}
+
+  .weights{display:flex; flex-wrap:wrap; gap:1px; background:var(--rule); border:1px solid var(--rule); margin-bottom:18px}
+  .w{background:var(--surface); padding:11px 14px; flex:1 1 130px}
+  .w b{display:block; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:17px; color:var(--accent); font-variant-numeric:tabular-nums}
+  .w small{display:block; font-size:12px; color:var(--muted); margin-top:3px; line-height:1.35}
+
+  .src{columns:2; column-gap:28px; font-size:13px}
+  .src a{display:block; break-inside:avoid; margin-bottom:7px; color:var(--ink-2); text-decoration:none; border-bottom:1px solid var(--rule)}
+  .src a:hover,.src a:focus-visible{color:var(--accent); border-color:var(--accent)}
+  @media (max-width:640px){ .src{columns:1} .find{grid-template-columns:1fr; gap:6px} }
+
+  footer{border-top:1px solid var(--rule); padding-top:16px; color:var(--muted); font-size:12.5px; max-width:78ch}
+  a{color:var(--accent)}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+</style>
+
+<div class="wrap">
+
+  <header class="head">
+    <div class="stamp">
+      <span>Досье рынка</span><span>Google Play + App Store</span><span>Данные на 03.08.2026</span><span>22 референса · 24 источника</span>
+    </div>
+    <h1>Что покупают в 2026-м<br>и куда встаёт 2D-постапокалипсис</h1>
+    <p class="lede">Разбор топов по выручке и по скачиваниям — и 22 игры, отобранные под конкретный концепт: движение по X/Y, крутая 2D-графика, freemium, ядерный постапокалипсис с фермой, автоматизацией и мирным городом-хабом.</p>
+    <div class="kpis">
+      <div class="kpi"><b>$53 млрд</b><small>прогноз топ-100 игр, 2026</small></div>
+      <div class="kpi"><b>$19 млрд</b><small>жанр «стратегии / выживание»</small></div>
+      <div class="kpi"><b>4 из 10</b><small>игр топ-грос — survival</small></div>
+      <div class="kpi"><b>+37%</b><small>рост hybrid-casual</small></div>
+      <div class="kpi"><b>5–7</b><small>механик монетизации у топов</small></div>
+    </div>
+  </header>
+
+  <section>
+    <div class="sec-head"><span class="code">01</span><h2>Рынок: где деньги</h2></div>
+    <p class="sec-note">Топ-100 игр забирают 58% всей выручки мобильного гейминга, но 42% остаётся за их пределами — нишевый проект может быть прибыльным, не входя в топ-10. Все цифры — оценки аналитиков (Sensor Tower, AppMagic, Appfigures), издатели отчётность не раскрывают.</p>
+    <div class="scroll">
+      <table>
+        <caption class="mono" style="caption-side:top;text-align:left;padding:10px 12px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--rule)">Топ-10 по выручке, первое полугодие 2026 · $ млн в месяц</caption>
+        <thead>
+          <tr><th class="rank">#</th><th>Игра</th><th>Жанр</th><th>Выручка/мес</th><th>Накоплено</th><th>Нам</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="rank">1</td><td class="name">Honor of Kings</td><td>MOBA</td>
+            <td><div class="revbar"><div class="track"><div class="fill" style="width:100%"></div></div><span class="val mono">160</span></div></td>
+            <td class="num">&gt;$2,5 млрд за 2026</td><td><span class="chip">низкая</span></td></tr>
+          <tr><td class="rank">2</td><td class="name">Whiteout Survival</td><td>4X-выживание, ледниковый апокалипсис</td>
+            <td><div class="revbar"><div class="track"><div class="fill" style="width:69%"></div></div><span class="val mono">110</span></div></td>
+            <td class="num">&gt;$3 млрд</td><td><span class="chip key">эталон</span></td></tr>
+          <tr><td class="rank">3</td><td class="name">PUBG Mobile</td><td>Battle royale</td>
+            <td><div class="revbar"><div class="track"><div class="fill" style="width:83%"></div></div><span class="val mono">133</span></div></td>
+            <td class="num">н/д</td><td><span class="chip">низкая</span></td></tr>
+          <tr><td class="rank">4</td><td class="name">Royal Match</td><td>Match-3</td>
+            <td><div class="revbar"><div class="track"><div class="fill" style="width:63%"></div></div><span class="val mono">100</span></div></td>
+            <td class="num">н/д</td><td><span class="chip">live-ops</span></td></tr>
+          <tr><td class="rank">5</td><td class="name">Gossip Harbor</td><td>Merge + сюжет</td>
+            <td><div class="revbar"><div class="track"><div class="fill" style="width:63%"></div></div><span class="val mono">100</span></div></td>
+            <td class="num">н/д</td><td><span class="chip">низкая</span></td></tr>
+          <tr><td class="rank">6</td><td class="name">Candy Crush Saga</td><td>Match-3</td>
+            <td><div class="revbar"><div class="track"><div class="fill" style="width:59%"></div></div><span class="val mono">95</span></div></td>
+            <td class="num">&gt;$20 млрд за 13 лет</td><td><span class="chip">низкая</span></td></tr>
+          <tr><td class="rank">7</td><td class="name">Kingshot</td><td>4X + tower defense + idle</td>
+            <td><div class="revbar"><div class="track"><div class="fill" style="width:58%"></div></div><span class="val mono">93</span></div></td>
+            <td class="num">$811,9 млн за 1-й год</td><td><span class="chip key">эталон</span></td></tr>
+          <tr><td class="rank">8</td><td class="name">MONOPOLY GO!</td><td>Board / social</td>
+            <td><div class="revbar"><div class="track"><div class="fill" style="width:53%"></div></div><span class="val mono">85</span></div></td>
+            <td class="num">н/д</td><td><span class="chip">ивенты</span></td></tr>
+          <tr><td class="rank">9</td><td class="name">Last War: Survival</td><td>4X + гибридные мини-игры</td>
+            <td><div class="revbar"><div class="track"><div class="fill" style="width:44%"></div></div><span class="val mono">71</span></div></td>
+            <td class="num">спад со $120–135 млн</td><td><span class="chip key">UA-воронка</span></td></tr>
+          <tr><td class="rank">10</td><td class="name">Roblox</td><td>UGC-платформа</td>
+            <td><div class="revbar"><div class="track"><div class="fill" style="width:0%"></div></div><span class="val mono">н/д</span></div></td>
+            <td class="num">спад г/г</td><td><span class="chip">соц. ядро</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Лидеры по скачиваниям — это другая игра</h3>
+    <div class="scroll">
+      <table>
+        <thead><tr><th class="rank">#</th><th>Игра</th><th>Показатель</th><th>Что подтверждает</th></tr></thead>
+        <tbody>
+          <tr><td class="rank">1</td><td class="name">ROBLOX</td><td class="num">№1 в мире, июнь 2026</td><td>UGC = бесконечное удержание</td></tr>
+          <tr><td class="rank">2</td><td class="name">Free Fire</td><td class="num">№1 в Google Play</td><td>оптимизация под слабые устройства</td></tr>
+          <tr><td class="rank">3</td><td class="name">Block Blast!</td><td class="num">89 млн загрузок в App Store</td><td>простейшая механика + агрессивный UA</td></tr>
+          <tr><td class="rank">4</td><td class="name">Subway Surfers</td><td class="num">&gt;2 млрд за всё время</td><td>движение по X/Y живёт десятилетие</td></tr>
+          <tr><td class="rank">5</td><td class="name">Survivor.io</td><td class="num">&gt;80 млн установок</td><td>2D top-down берёт объём через TikTok</td></tr>
+          <tr><td class="rank">6</td><td class="name">Kingshot</td><td class="num">42 млн за 12 месяцев</td><td>survival-4X масштабируется и по трафику</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sec-note" style="margin-top:14px">Вывод: загрузки собирают казуальные игры, деньги — выживание и стратегии. В нише выживания объём трафика ниже, но ARPU кратно выше. Ориентир — выручка, а не скачивания.</p>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="code">02</span><h2>Шесть категорий референсов</h2></div>
+    <p class="sec-note">22 игры разложены по тому, что именно у них стоит забирать. Ни одна не закрывает концепт целиком — поэтому итоговая игра собирается из трёх источников: управление, производство, монетизация.</p>
+    <div class="cats">
+      <div class="cat">
+        <div class="code">A · 5 игр</div><h4>Топ-грос 4X-выживание</h4>
+        <p>Деньги жанра. Изометрия, тапы по карте, город + ресурсы + альянсы. Берём экономику, сезоны и календарь ивентов.</p>
+        <div class="games">Whiteout Survival · Kingshot · Last War · State of Survival · Doomsday</div>
+        <div class="stat"><span>Средн. приоритет <b>7,9</b></span><span>Макс. <b>8,29</b></span></div>
+      </div>
+      <div class="cat">
+        <div class="code">B · 5 игр</div><h4>F2P выживание-крафт</h4>
+        <p>Ближайшие конкуренты: стик, вылазки, база, грядки. Здесь же — единственный образец мирного города-хаба в F2P (LifeAfter).</p>
+        <div class="games">Last Day on Earth · Grim Soul · Dawn of Zombies · Days After · LifeAfter</div>
+        <div class="stat"><span>Средн. приоритет <b>7,2</b></span><span>Макс. <b>8,15</b></span></div>
+      </div>
+      <div class="cat">
+        <div class="code">C · 3 игры</div><h4>2D премиум-выживание</h4>
+        <p>Эталон качества картинки и глубины систем — но платные. Показывают планку, до которой должна дотягиваться графика.</p>
+        <div class="games">Terraria · DYSMANTLE · Project Zomboid (mobile)</div>
+        <div class="stat"><span>Средн. приоритет <b>6,0</b></span><span>Макс. <b>6,67</b></span></div>
+      </div>
+      <div class="cat">
+        <div class="code">D · 6 игр</div><h4>Ферма и автоматизация в 2D</h4>
+        <p>Ядро вашего геймплея. Почти всё — premium; F2P-исключения (Deep Town, Harvest Town) и есть ваш чертёж монетизации производства.</p>
+        <div class="games">Stardew Valley · Forager · Core Keeper · Mindustry · Deep Town · Harvest Town</div>
+        <div class="stat"><span>Средн. приоритет <b>5,9</b></span><span>Макс. <b>6,85</b></span></div>
+      </div>
+      <div class="cat">
+        <div class="code">E · 1 игра</div><h4>2D-экшн F2P</h4>
+        <p>Управление одним пальцем и «сочность» боя, плюс проверенная вирусная связка креативов. Ни базы, ни фермы — только фидбек.</p>
+        <div class="games">Survivor.io</div>
+        <div class="stat"><span>Приоритет <b>6,83</b></span><span>Установок <b>80 млн+</b></span></div>
+      </div>
+      <div class="cat">
+        <div class="code">F · 2 игры</div><h4>2D-строительство базы</h4>
+        <p>Как показывать убежище в 2D и как монетизировать без давления. Fallout Shelter — 100 млн загрузок и &gt;$90 млн на одних лутбоксах.</p>
+        <div class="games">Fallout Shelter · Sheltered 2</div>
+        <div class="stat"><span>Средн. приоритет <b>5,6</b></span><span>Макс. <b>6,81</b></span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="code">03</span><h2>Скоринг под ваши критерии</h2></div>
+    <p class="sec-note">Каждая игра оценена 0–10 по семи критериям концепта. Итоговый приоритет = 60% соответствия концепту + 40% коммерческого успеха. Веса критериев:</p>
+    <div class="weights">
+      <div class="w"><b>20%</b><small>Freemium: премиум-предметы и валюта</small></div>
+      <div class="w"><b>15%</b><small>Движение персонажа по X/Y</small></div>
+      <div class="w"><b>15%</b><small>Качество 2D-графики</small></div>
+      <div class="w"><b>15%</b><small>Постапокалиптический сеттинг</small></div>
+      <div class="w"><b>15%</b><small>Строительство + автоматизация</small></div>
+      <div class="w"><b>10%</b><small>Фермерство и выращивание</small></div>
+      <div class="w"><b>10%</b><small>Мирный город-хаб: обмен и миссии</small></div>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th class="rank">#</th><th>Игра</th><th>Кат.</th><th>Модель</th><th>Итоговый приоритет</th><th>Соотв.</th><th>Роль референса</th></tr></thead>
+        <tbody>
+          <tr><td class="rank">1</td><td class="name">Whiteout Survival</td><td class="mono">A</td><td><span class="chip f2p">F2P</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:82.9%"></div></div><span class="val">8,3</span></div></td><td class="num">7,2</td><td>монетизация и live-ops</td></tr>
+          <tr><td class="rank">2</td><td class="name">Last Day on Earth</td><td class="mono">B</td><td><span class="chip f2p">F2P</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:81.5%"></div></div><span class="val">8,2</span></div></td><td class="num">8,2</td><td><b>главный: геймплей целиком</b></td></tr>
+          <tr><td class="rank">3</td><td class="name">Kingshot</td><td class="mono">A</td><td><span class="chip f2p">F2P</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:80.2%"></div></div><span class="val">8,0</span></div></td><td class="num">6,7</td><td>гибридный онбординг</td></tr>
+          <tr><td class="rank">4</td><td class="name">Last War: Survival</td><td class="mono">A</td><td><span class="chip f2p">F2P</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:78.7%"></div></div><span class="val">7,9</span></div></td><td class="num">6,5</td><td>UA-воронка</td></tr>
+          <tr><td class="rank">5</td><td class="name">State of Survival</td><td class="mono">A</td><td><span class="chip f2p">F2P</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:78.3%"></div></div><span class="val">7,8</span></div></td><td class="num">7,0</td><td>постапок-мета, IP-коллабы</td></tr>
+          <tr><td class="rank">6</td><td class="name">Doomsday: Last Survivors</td><td class="mono">A</td><td><span class="chip f2p">F2P</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:73.4%"></div></div><span class="val">7,3</span></div></td><td class="num">6,9</td><td>спрос на постапокалипсис растёт</td></tr>
+          <tr><td class="rank">7</td><td class="name">LifeAfter</td><td class="mono">B</td><td><span class="chip f2p">F2P</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:72.8%"></div></div><span class="val">7,3</span></div></td><td class="num">6,8</td><td><b>мирный город-хаб</b></td></tr>
+          <tr><td class="rank">8</td><td class="name">Dawn of Zombies</td><td class="mono">B</td><td><span class="chip f2p">F2P</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:70.7%"></div></div><span class="val">7,1</span></div></td><td class="num">8,4</td><td>фракции и NPC-квесты</td></tr>
+          <tr><td class="rank">9</td><td class="name">Grim Soul</td><td class="mono">B</td><td><span class="chip f2p">F2P</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:68.7%"></div></div><span class="val">6,9</span></div></td><td class="num">7,5</td><td>перенос каркаса в новый сеттинг</td></tr>
+          <tr><td class="rank">10</td><td class="name">Stardew Valley</td><td class="mono">D</td><td><span class="chip prem">Premium</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:68.5%"></div></div><span class="val">6,9</span></div></td><td class="num">6,8</td><td><b>ферма + мирный город</b></td></tr>
+          <tr><td class="rank">11</td><td class="name">Survivor.io</td><td class="mono">E</td><td><span class="chip f2p">F2P</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:68.3%"></div></div><span class="val">6,8</span></div></td><td class="num">6,0</td><td><b>управление и вирусность</b></td></tr>
+          <tr><td class="rank">12</td><td class="name">Fallout Shelter</td><td class="mono">F</td><td><span class="chip f2p">F2P</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:68.1%"></div></div><span class="val">6,8</span></div></td><td class="num">7,3</td><td>2D-подача и мягкая монетизация</td></tr>
+          <tr><td class="rank">13</td><td class="name">Terraria (mobile)</td><td class="mono">C</td><td><span class="chip prem">Premium</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:66.7%"></div></div><span class="val">6,7</span></div></td><td class="num">6,5</td><td>2D-графика и город NPC</td></tr>
+          <tr><td class="rank">14</td><td class="name">Days After</td><td class="mono">B</td><td><span class="chip f2p">F2P</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:64.9%"></div></div><span class="val">6,5</span></div></td><td class="num">8,2</td><td>нижняя планка качества ниши</td></tr>
+          <tr><td class="rank">15</td><td class="name">Harvest Town</td><td class="mono">D</td><td><span class="chip f2p">F2P</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:63.8%"></div></div><span class="val">6,4</span></div></td><td class="num">7,3</td><td>2D-ферма работает в F2P</td></tr>
+          <tr><td class="rank">16</td><td class="name">Deep Town</td><td class="mono">D</td><td><span class="chip f2p">F2P</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:62.9%"></div></div><span class="val">6,3</span></div></td><td class="num">7,2</td><td><b>монетизация автоматизации</b></td></tr>
+          <tr><td class="rank">17</td><td class="name">Core Keeper</td><td class="mono">D</td><td><span class="chip prem">Premium</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:60.2%"></div></div><span class="val">6,0</span></div></td><td class="num">6,7</td><td>кооперативная база</td></tr>
+          <tr><td class="rank">18</td><td class="name">Project Zomboid (mobile)</td><td class="mono">C</td><td><span class="chip prem">Premium</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:57.8%"></div></div><span class="val">5,8</span></div></td><td class="num">6,3</td><td>симуляция и навыки</td></tr>
+          <tr><td class="rank">19</td><td class="name">DYSMANTLE</td><td class="mono">C</td><td><span class="chip prem">Premium</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:56.5%"></div></div><span class="val">5,7</span></div></td><td class="num">6,8</td><td>лутинг и разрушаемость</td></tr>
+          <tr><td class="rank">20</td><td class="name">Forager</td><td class="mono">D</td><td><span class="chip prem">Premium</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:53.8%"></div></div><span class="val">5,4</span></div></td><td class="num">6,3</td><td>петля «собрал → построил → автоматизировал»</td></tr>
+          <tr><td class="rank">21</td><td class="name">Mindustry</td><td class="mono">D</td><td><span class="chip">Free / донаты</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:44.1%"></div></div><span class="val">4,4</span></div></td><td class="num">5,3</td><td><b>эталон автоматизации</b></td></tr>
+          <tr><td class="rank">22</td><td class="name">Sheltered 2</td><td class="mono">F</td><td><span class="chip prem">Premium</span></td>
+            <td><div class="meter"><div class="track"><div class="fill" style="width:43.7%"></div></div><span class="val">4,4</span></div></td><td class="num">6,0</td><td>атмосфера и менеджмент выживших</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sec-note" style="margin-top:14px">Обратите внимание на разрыв: у Dawn of Zombies и Days After соответствие концепту максимальное (8,4 и 8,2), а коммерческий результат — низкий. Значит, дело не в идее, а в исполнении: качество картинки, темп прогресса и удержание.</p>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="code">04</span><h2>Что из этого следует</h2></div>
+    <div class="finds">
+      <div class="find"><div class="idx">Тренд</div><div>
+        <h4>Выживание с базой — самый денежный тренд 2026-го</h4>
+        <p>Whiteout Survival ~$110 млн в месяц и &gt;$3 млрд накопленным итогом, Kingshot — $811,9 млн за первый год, State of Survival — $1,69 млрд lifetime. Сеттинг выбран правильно.</p></div></div>
+      <div class="find"><div class="idx">Разрыв</div><div>
+        <h4>Но ни одна игра топ-грос не 2D и не про движение персонажа</h4>
+        <p>Все они изометрические, управление — тап по карте города. Ваше «движение по X/Y» живёт в соседней нише: Last Day on Earth, Survivor.io, DYSMANTLE. Отсюда стратегия: монетизацию брать у 4X, геймплей — у top-down выживачей.</p></div></div>
+      <div class="find"><div class="idx">Ферма</div><div>
+        <h4>Ферма и автоматизация в 2D почти всегда продаются как premium</h4>
+        <p>Stardew Valley, Forager, Core Keeper, Terraria — платные. В F2P это умеют Deep Town (слоты дронов, ускорители, оффлайн-доход) и Harvest Town. Автоматизацию монетизируем слотами и ускорителями, а не продажей игры.</p></div></div>
+      <div class="find"><div class="idx">Хаб</div><div>
+        <h4>Мирный город — недооценённая механика</h4>
+        <p>В Terraria NPC заселяются и дают торговлю и квесты, в LifeAfter город Осень держит всю социалку. Для F2P хаб — это ещё и точка монетизации: слоты торговли, скидки по VIP, приём миссий.</p></div></div>
+      <div class="find"><div class="idx">Риск</div><div>
+        <h4>Ниша уже занята клонами — выигрывает исполнение</h4>
+        <p>Days After и Dawn of Zombies взяли по 10 млн+ установок с почти идеальным попаданием в концепт, но остались нишевыми: слабая графика и жёсткий гринд. Ваше преимущество должно быть в качестве 2D-картинки и в темпе прогресса.</p></div></div>
+    </div>
+
+    <h3>Сборка концепта</h3>
+    <div class="recipe">
+      <div class="rh"><strong>Три донора — одна игра</strong><span>рекомендация</span></div>
+      <ul>
+        <li><b>Управление и боевой фидбек</b> — Last Day on Earth плюс «сочность» Survivor.io: стик, top-down, читаемые силуэты, мгновенный отклик.</li>
+        <li><b>Производственный цикл</b> — Forager и Stardew Valley для петли «собрал → построил → автоматизировал», Mindustry для конвейеров и цепочек, Deep Town для того, как это продаётся в F2P.</li>
+        <li><b>Мирный город</b> — Terraria как модель «построил дом → пришёл NPC → открылись торговля и миссии», LifeAfter как модель социального хаба.</li>
+        <li><b>Монетизация</b> — Whiteout Survival: премиум-валюта, сезонный пропуск, стартовый набор, VIP-подписка, ускорители производства, слоты автоматизации, косметика базы. Минимум пять механик из семи: у 83% топ-игр их 5–7.</li>
+        <li><b>Чего избегать</b> — гринда ради гринда и энергии как единственной стены. Это то, на чём осыпались прямые конкуренты с тем же концептом.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="code">05</span><h2>Источники</h2></div>
+    <p class="sec-note">Финансовые показатели — оценки аналитических компаний, а не отчётность издателей. По Last Day on Earth и Grim Soul публичных данных о выручке нет.</p>
+    <div class="src">
+      <a href="https://mobilegamer.biz/2026s-top-10-grossing-mobile-games-so-far-honor-of-kings-whiteout-survival-lastwar-royal-match-pubg-mobile-more/">mobilegamer.biz — топ-10 по выручке, H1 2026</a>
+      <a href="https://sensortower.com/blog/top-10-worldwide-mobile-games-by-revenue-and-downloads-in-june-2026">Sensor Tower — топ-10, июнь 2026</a>
+      <a href="https://sensortower.com/blog/top-10-worldwide-mobile-games-by-revenue-and-downloads-in-january-2026">Sensor Tower — топ-10, январь 2026</a>
+      <a href="https://www.digitaltoday.co.kr/en/view/55387/sensortower-top-100-mobile-games-forecast-53-billion-dollars-revenue-this-year">Sensor Tower — прогноз $53 млрд на 2026</a>
+      <a href="https://www.pocketgamer.biz/whiteout-survival-hits-3bn-in-player-spending-in-under-25-years/">PocketGamer.biz — Whiteout Survival, $3 млрд</a>
+      <a href="https://appfigures.com/resources/insights/kingshot-500m-revenue-century-games">Appfigures — Kingshot, выручка и загрузки</a>
+      <a href="https://www.blog.udonis.co/statistics/state-of-survival">Udonis — State of Survival, статистика</a>
+      <a href="https://www.tradingview.com/news/reuters.com,2026-03-25:newsml_ACN105845:0-igg-doomsday-last-survivors-achieves-record-high-monthly-gross-billing-of-hk-130-million/">IGG — Doomsday: Last Survivors, рекорд месяца</a>
+      <a href="https://sensortower.com/blog/lifeafter-revenue">Sensor Tower — LifeAfter, выручка</a>
+      <a href="https://mobilegamer.biz/data-digest-savvys-moonton-swoop-liftoff-kills-ipo-habby-hits-2bn-fallout-shelter-more/">mobilegamer.biz — Habby, Survivor.io, Fallout Shelter</a>
+      <a href="https://www.gamedeveloper.com/business/-i-fallout-shelter-i-surpasses-90m-in-lifetime-mobile-revenue">Game Developer — Fallout Shelter, $90 млн</a>
+      <a href="https://www.blog.udonis.co/mobile-marketing/mobile-games/terraria">Udonis — Terraria, продажи на мобильных</a>
+      <a href="https://www.notebookcheck.net/Stardew-Valley-raked-in-over-1-million-in-its-first-month-on-iOS.366871.0.html">Notebookcheck — Stardew Valley на iOS</a>
+      <a href="https://games-stats.com/steam/game/mindustry/">Steam Marketing Tool — Mindustry</a>
+      <a href="https://www.blog.udonis.co/mobile-marketing/mobile-games/most-downloaded-mobile-games">Udonis — самые скачиваемые игры 2026</a>
+      <a href="https://www.deconstructoroffun.com/blog/2026/2/2/state-of-mobile-2026">Deconstructor of Fun — State of Mobile 2026</a>
+      <a href="https://www.singular.net/blog/top-mobile-games/">Singular — топ-игры и механики монетизации</a>
+      <a href="https://mobi.gg/en/tops/top-17-best-survival-games-mobile-android-ios/">Mobi.gg — обзор мобильных выживалок 2026</a>
+    </div>
+  </section>
+
+  <footer>
+    Оценки 0–10 по семи критериям выставлены экспертно по механикам игр; веса критериев и итоговые формулы можно менять в приложенном файле Mobile_Games_Research_2026.xlsx — там же полные таблицы по 22 референсам, топам и источникам.
+  </footer>
+</div>
+
+</body>
+</html>
