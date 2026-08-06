@@ -363,6 +363,8 @@ const RECIPES = [
   { out: ['ladder', 4], in: { plank: 2, stick: 2 }, station: null },
   { out: ['home_flag', 1], in: {}, station: null },
   { out: ['plan', 1], in: {}, station: null },
+  { out: ['grenade', 2], in: { scrap: 4, iron: 3, coal: 6 }, station: 'workbench' },
+  { out: ['c4', 1], in: { scrap: 14, iron: 10, coal: 16 }, station: 'workbench' },
   { out: ['grenade', 1], in: { iron: 3, scrap: 4, coal: 5 }, station: 'workbench' },
   { out: ['c4', 1], in: { iron: 10, scrap: 16, coal: 18, rag: 2 }, station: 'workbench' },
   { out: ['refinery', 1], in: { iron: 18, stone: 24, scrap: 10 }, station: 'workbench' },

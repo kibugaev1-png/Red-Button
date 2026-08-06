@@ -221,7 +221,14 @@ const Zombies = {
 // ---- лут на земле и ящики ----
 const Drops = {
   list: [],
-  add(x, y, id, n) { this.list.push({ x, y, vx: rnd(-0.6, 0.6), vy: -1.2, id, n, t: 0, crate: false }); },
+  add(x, y, id, n, vx, vy, noPick) {
+    this.list.push({
+      x, y, id, n, t: 0, crate: false,
+      vx: vx !== undefined ? vx : rnd(-0.6, 0.6),
+      vy: vy !== undefined ? vy : -1.2,
+      noPick: noPick || 0        // сколько секунд предмет нельзя поднять обратно
+    });
+  },
   addCrate(cx, cy, loot, military) {
     this.list.push({ x: cx * CELL, y: cy * CELL, crate: true, military, loot, opened: false, t: 0 });
   },
@@ -239,6 +246,7 @@ const Drops = {
     let best = null, bd = r;
     for (const d of this.list) {
       if (d.crate && d.opened) continue;
+      if (d.noPick && d.t < d.noPick) continue;
       const dd = dist(x, y, d.x, d.y - (d.crate ? 8 : 0));
       if (dd < bd) { bd = dd; best = d; }
     }

@@ -281,7 +281,7 @@ const UI = {
     }
 
     // подсказки клавиш
-    this.text(g, 'Q применить · I инвентарь · B тело · C крафт · M карта · F навыки · E взять · R перезарядка · Esc пауза', W / 2, H - 4, 'rgba(200,190,160,0.3)', 11, '500', 'center');
+    this.text(g, 'Ю выбросить · Q применить · I инвентарь · B тело · C крафт · M карта · F навыки · E взять · R перезарядка · Esc пауза', W / 2, H - 4, 'rgba(200,190,160,0.3)', 11, '500', 'center');
   },
 
   // ---- инвентарь ----
@@ -290,7 +290,7 @@ const UI = {
     g.fillStyle = 'rgba(0,0,0,0.6)'; g.fillRect(0, 0, W, H);
     const pw = 560, ph = 470, px = W / 2 - pw - 12, py = H / 2 - ph / 2;
     this.panel(g, px, py, pw, ph, 'Инвентарь — 30 ячеек');
-    this.text(g, 'ЛКМ — взять · ПКМ или Q — сразу применить', px + pw - 16, py + 26, 'rgba(200,190,160,0.55)', 12, '600', 'right');
+    this.text(g, 'ЛКМ — взять · ПКМ — применить', px + pw - 16, py + 26, 'rgba(200,190,160,0.55)', 12, '600', 'right');
 
     const s = 56, gap = 8;
     // 24 ячейки основного объёма
@@ -306,6 +306,30 @@ const UI = {
       const x = px + 22 + i * (s + gap), y = py + ph - 82;
       this.slotBox(g, x, y, s, Player.inv.slots[i], Player.hotbar === i);
       this.slotClick(i, x, y, s);
+    }
+
+    // Красная полоса сброса: вынес предмет за неё, отпустил кнопку — выбросил.
+    // Это самый простой способ выкинуть вещь, без всяких сочетаний клавиш
+    const dz = { x: px + pw - 4, y: py + 44, w: 26, h: ph - 56 };
+    const overDrop = Input.mx > dz.x && Input.mx < dz.x + dz.w && Input.my > dz.y && Input.my < dz.y + dz.h;
+    const hot = this.held && overDrop;
+    g.fillStyle = hot ? 'rgba(200,60,44,0.55)' : this.held ? 'rgba(180,54,40,0.3)' : 'rgba(150,50,40,0.16)';
+    g.beginPath(); g.roundRect(dz.x, dz.y, dz.w, dz.h, 7); g.fill();
+    g.strokeStyle = hot ? '#ff8a70' : 'rgba(210,80,60,0.7)';
+    g.lineWidth = hot ? 2 : 1.2;
+    g.setLineDash([6, 5]);
+    g.beginPath(); g.roundRect(dz.x + 0.5, dz.y + 0.5, dz.w - 1, dz.h - 1, 7); g.stroke();
+    g.setLineDash([]);
+    // подпись вдоль полосы
+    g.save();
+    g.translate(dz.x + dz.w / 2, dz.y + dz.h / 2);
+    g.rotate(Math.PI / 2);
+    this.text(g, hot ? 'ОТПУСТИ — ВЫБРОСИТЬ' : 'ВЫБРОСИТЬ', 0, 4, hot ? '#fff0e6' : 'rgba(240,180,164,0.85)', 12, '800', 'center');
+    g.restore();
+    // сам сброс: клик по полосе с предметом в руке
+    if (this.held && overDrop && (Input.mclick || Input.rclick) && this.guard <= 0) {
+      Player.dropStack(this.held.id, this.held.n);
+      this.held = null;
     }
 
     // правая панель: снаряжение и персонаж
@@ -340,6 +364,11 @@ const UI = {
   },
   slotClick(i, x, y, s) {
     const over = Input.mx > x && Input.mx < x + s && Input.my > y && Input.my < y + s;
+    // Shift + ПКМ по ячейке — выбросить всю пачку на землю
+    if (over && Input.rclick && this.guard <= 0 && !this.held && Input.isDown('ShiftLeft')) {
+      Player.dropSlot(i);
+      return;
+    }
     // ПКМ по ячейке — сразу принять: таблетки, еду, воду, бинт, цинк, противогаз
     if (over && Input.rclick && this.guard <= 0 && !this.held) {
       Player.consume(i);

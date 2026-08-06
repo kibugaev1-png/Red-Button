@@ -217,6 +217,8 @@ const Game = {
     if (Input.once('KeyC')) UI.screen = UI.screen === 'craft' ? null : 'craft';
     if (Input.once('KeyM')) UI.screen = UI.screen === 'map' ? null : 'map';
     if (Input.once('KeyF')) UI.screen = UI.screen === 'skills' ? null : 'skills';
+    // Ю (она же точка на английской раскладке) — выбросить всё из руки
+    if (!Player.dead && (Input.once('Period') || Input.once('KeyG'))) Player.dropHand();
     for (let i = 0; i < 6; i++) if (Input.once('Digit' + (i + 1))) Player.hotbar = i;
     if (Input.wheel) Player.hotbar = (Player.hotbar + (Input.wheel > 0 ? 1 : 5)) % 6;
 
@@ -247,7 +249,7 @@ const Game = {
 
       // взаимодействие
       this.hint = '';
-      const d = Drops.nearest(Player.x, Player.y - 20, 60);
+      const d = Drops.nearest(Player.x, Player.y - 20, 92);
       const m = Machines.nearest(Player.x, Player.y - 20, 70);
       const c = City.nearest(Player.x, Player.y - 20, 60);
       const sdoor = Structures.list.find(st => st.part.hole === 'door' &&

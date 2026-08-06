@@ -68,6 +68,35 @@ const Player = {
 
   say(t) { this.msg = t; this.msgT = 3.4; },
 
+  // Выбросить всё из выбранной ячейки под ноги, как в Майнкрафте.
+  // Вещь летит в сторону взгляда и полторы секунды не подбирается обратно
+  dropHand() {
+    const slot = this.hand();
+    if (!slot) { this.say('В руке пусто'); return false; }
+    const id = slot.id, n = slot.n;
+    Drops.add(this.x + this.face * 12, this.y - 30, id, n, this.face * 1.6, -2, 1.2);
+    this.inv.slots[this.hotbar] = null;
+    this.say('Выбросил: ' + ITEMS[id].name + (n > 1 ? ' ×' + n : ''));
+    return true;
+  },
+
+  // выбросить произвольную пачку (её тянут мышью на красную полосу)
+  dropStack(id, n) {
+    Drops.add(this.x + this.face * 12, this.y - 30, id, n, this.face * 1.6, -2, 1.2);
+    this.say('Выбросил: ' + ITEMS[id].name + (n > 1 ? ' ×' + n : ''));
+    return true;
+  },
+
+  // выбросить конкретную ячейку инвентаря (правый клик по ней с зажатым Shift)
+  dropSlot(i) {
+    const slot = this.inv.slots[i];
+    if (!slot) return false;
+    Drops.add(this.x + this.face * 12, this.y - 30, slot.id, slot.n, this.face * 1.6, -2, 1.2);
+    this.say('Выбросил: ' + ITEMS[slot.id].name + (slot.n > 1 ? ' ×' + slot.n : ''));
+    this.inv.slots[i] = null;
+    return true;
+  },
+
   hand() { return this.inv.slots[this.hotbar]; },
   handItem() { const s = this.hand(); return s ? ITEMS[s.id] : null; },
 
