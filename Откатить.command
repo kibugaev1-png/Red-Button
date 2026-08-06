@@ -13,8 +13,8 @@ read -p "Номер снимка для отката (Enter — отмена): "
 HASH=$(git log --pretty=format:"%h" | sed -n "${N}p")
 if [ -z "$HASH" ]; then echo "Нет такого номера."; read -n 1 -s -r; exit 1; fi
 
-git add -A
-git -c user.name="Красная кнопка" -c user.email="game@local" commit -q -m "Перед откатом $(date '+%d.%m %H:%M')" 2>/dev/null
+git add -A >/dev/null 2>&1
+git -c user.name="Красная кнопка" -c user.email="game@local" commit -q -m "Перед откатом $(date '+%d.%m %H:%M')" >/dev/null 2>&1
 git checkout -q "$HASH" -- .
 echo "✓ Откатились к снимку $HASH"
 echo "  Пересобери приложение: «Собрать приложение.command»"

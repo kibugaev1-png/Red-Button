@@ -406,6 +406,45 @@ const Game = {
   },
 
   // ---- свет: ночь + подземная тьма + источники ----
+  // Дымка воздушной перспективы: дальнее светлее и мутнее — отсюда глубина
+  drawHaze(g) {
+    const night = this.nightAmount();
+    const warm = 1 - night;
+    const horizon = UI.H * 0.72;
+    const hz = g.createLinearGradient(0, horizon - 240, 0, horizon + 100);
+    hz.addColorStop(0, 'rgba(0,0,0,0)');
+    hz.addColorStop(0.55, 'rgba(' + (warm > 0.5 ? '226,196,150' : '60,66,86') + ',' + (0.14 + warm * 0.2) + ')');
+    hz.addColorStop(1, 'rgba(' + (warm > 0.5 ? '210,180,140' : '40,44,60') + ',0)');
+    g.fillStyle = hz;
+    g.fillRect(0, horizon - 240, UI.W, 340);
+    // пылинки в лучах
+    if (warm > 0.35) {
+      g.save();
+      g.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 42; i++) {
+        const h = hash2(i * 17, 3), h2 = hash2(i * 5, 29);
+        const px = (h * UI.W + this.cam.x * 0.25 + this.time * 6 * (0.4 + h2)) % UI.W;
+        const py = (h2 * UI.H * 0.8 + Math.sin(this.time * 0.6 + i) * 14 + UI.H) % UI.H;
+        g.fillStyle = 'rgba(255,232,190,' + ((0.05 + h * 0.1) * warm) + ')';
+        g.beginPath(); g.arc(px, py, 1 + h2 * 2.2, 0, 7); g.fill();
+      }
+      g.restore();
+    }
+  },
+
+  // Цветокоррекция кадра: тёплый свет, холодная тень. Один проход заливкой
+  drawGrade(g) {
+    const night = this.nightAmount();
+    g.save();
+    g.globalCompositeOperation = 'soft-light';
+    g.fillStyle = night > 0.5 ? 'rgba(60,80,140,0.34)' : 'rgba(255,186,110,0.30)';
+    g.fillRect(0, 0, UI.W, UI.H);
+    g.globalCompositeOperation = 'overlay';
+    g.fillStyle = 'rgba(40,36,30,0.10)';
+    g.fillRect(0, 0, UI.W, UI.H);
+    g.restore();
+  },
+
   drawLight(g) {
     const l = this.lctx;
     const night = this.nightAmount();
@@ -475,6 +514,7 @@ const Game = {
     if (UI.screen === 'custom') { UI.drawCustom(g); return; }
 
     this.drawBackground(g);
+    this.drawHaze(g);
 
     // мир
     const shx = this.shake ? rnd(-this.shake, this.shake) : 0;
@@ -531,6 +571,7 @@ const Game = {
     g.restore();
 
     this.drawLight(g);
+    this.drawGrade(g);
 
     // прицел
     if (!Player.dead && UI.screen === null) {
