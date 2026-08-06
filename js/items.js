@@ -73,6 +73,39 @@ const ITEMS = {
       g.restore();
     }
   },
+  grenade: {
+    name: 'Граната Ф-1', max: 10, type: 'throw', fuse: 2.6, blastR: 95, blastDmg: 130, crater: 5,
+    desc: 'ЛКМ или Q — бросок в сторону курсора. Оставляет небольшую воронку.',
+    icon: (g, s) => {
+      g.fillStyle = '#4a5240'; g.beginPath(); g.ellipse(s * 0.5, s * 0.56, s * 0.24, s * 0.3, 0, 0, 7); g.fill();
+      g.strokeStyle = 'rgba(20,24,18,0.6)'; g.lineWidth = s * 0.04;
+      for (let i = 0; i < 3; i++) { g.beginPath(); g.moveTo(s * 0.28, s * (0.42 + i * 0.14)); g.lineTo(s * 0.72, s * (0.42 + i * 0.14)); g.stroke(); }
+      g.fillStyle = '#6d7364'; g.fillRect(s * 0.42, s * 0.16, s * 0.16, s * 0.12);
+      g.strokeStyle = '#8b8f80'; g.lineWidth = s * 0.03;
+      g.beginPath(); g.arc(s * 0.64, s * 0.2, s * 0.07, 0, 7); g.stroke();
+    }
+  },
+  c4: {
+    name: 'Заряд C4', max: 6, type: 'throw', fuse: 5, blastR: 190, blastDmg: 420, crater: 14, sticky: true,
+    desc: 'Прилипает, где упал. Пять секунд — и большая воронка.',
+    icon: (g, s) => {
+      g.fillStyle = '#c9bfa2'; g.beginPath(); g.roundRect(s * 0.16, s * 0.36, s * 0.68, s * 0.34, s * 0.04); g.fill();
+      g.fillStyle = '#8a7c5c'; g.fillRect(s * 0.16, s * 0.5, s * 0.68, s * 0.07);
+      g.fillStyle = '#c04a3a'; g.beginPath(); g.roundRect(s * 0.56, s * 0.24, s * 0.16, s * 0.14, s * 0.03); g.fill();
+      g.strokeStyle = '#3a3f45'; g.lineWidth = s * 0.035;
+      g.beginPath(); g.moveTo(s * 0.64, s * 0.24); g.quadraticCurveTo(s * 0.8, s * 0.14, s * 0.86, s * 0.24); g.stroke();
+    }
+  },
+  fuel: {
+    name: 'Топливо', max: 60, type: 'res', desc: 'Переработано на НПЗ. Кормит бур и генератор убежища.',
+    icon: (g, s) => {
+      g.fillStyle = '#c24a2a'; g.beginPath(); g.roundRect(s * 0.26, s * 0.28, s * 0.46, s * 0.56, s * 0.06); g.fill();
+      g.fillStyle = '#8f3520'; g.fillRect(s * 0.26, s * 0.46, s * 0.46, s * 0.06);
+      g.fillStyle = '#e0e0d0'; g.fillRect(s * 0.34, s * 0.58, s * 0.3, s * 0.12);
+      g.fillStyle = '#4a4d52'; g.fillRect(s * 0.42, s * 0.2, s * 0.14, s * 0.1);
+      g.fillStyle = 'rgba(255,255,255,0.2)'; g.fillRect(s * 0.3, s * 0.3, s * 0.06, s * 0.5);
+    }
+  },
   plan: {
     name: 'Строительный план', max: 1, type: 'plan', desc: 'ПКМ или Q — поставить деталь. Колесо мыши — выбрать деталь.',
     icon: (g, s) => {
@@ -231,10 +264,19 @@ const ITEMS = {
       const gr = g.createRadialGradient(s * 0.5, s * 0.48, 0, s * 0.5, s * 0.48, s * 0.3);
       gr.addColorStop(0, '#fff3bb'); gr.addColorStop(0.45, '#f5a03c'); gr.addColorStop(1, 'rgba(240,110,30,0)');
       g.fillStyle = gr; g.beginPath(); g.ellipse(s * 0.5, s * 0.46, s * 0.24, s * 0.3, 0, 0, 7); g.fill(); } },
-  drill: { name: 'Автобур', max: 10, type: 'machine', machine: 'drill', w: 4, h: 5, desc: 'Сам грызёт породу под собой. Жрёт уголь.',
+  drill: { name: 'Автобур', max: 10, type: 'machine', machine: 'drill', w: 4, h: 5, desc: 'Сам грызёт породу под собой. Работает на топливе с НПЗ.',
     icon: (g, s) => { g.fillStyle = '#5c6066'; g.beginPath(); g.roundRect(s * 0.24, s * 0.14, s * 0.52, s * 0.4, s * 0.06); g.fill();
       g.fillStyle = '#d0a13c'; g.fillRect(s * 0.3, s * 0.2, s * 0.4, s * 0.08);
       g.fillStyle = '#9aa0a6'; g.beginPath(); g.moveTo(s * 0.36, s * 0.54); g.lineTo(s * 0.64, s * 0.54); g.lineTo(s * 0.5, s * 0.92); g.fill(); } },
+  refinery: { name: 'НПЗ', max: 5, type: 'machine', machine: 'refinery', w: 5, h: 4, desc: 'Гонит топливо из угля и дерева. Топливом кормится бур.',
+    icon: (g, s) => {
+      g.fillStyle = '#5c6167'; g.beginPath(); g.roundRect(s * 0.14, s * 0.4, s * 0.5, s * 0.46, s * 0.05); g.fill();
+      g.fillStyle = '#43484e'; g.beginPath(); g.roundRect(s * 0.66, s * 0.2, s * 0.2, s * 0.66, s * 0.04); g.fill();
+      g.fillStyle = '#8b9198'; g.fillRect(s * 0.18, s * 0.5, s * 0.42, s * 0.06);
+      g.fillStyle = '#c24a2a'; g.beginPath(); g.arc(s * 0.34, s * 0.68, s * 0.08, 0, 7); g.fill();
+      g.fillStyle = 'rgba(220,220,220,0.5)'; g.beginPath(); g.ellipse(s * 0.76, s * 0.14, s * 0.1, s * 0.06, 0, 0, 7); g.fill();
+    }
+  },
   farmplot: { name: 'Грядка', max: 20, type: 'machine', machine: 'farm', w: 3, h: 1, desc: 'Ставится на землю. Посади семена.',
     icon: (g, s) => { g.fillStyle = '#4a3423'; g.beginPath(); g.roundRect(s * 0.12, s * 0.56, s * 0.76, s * 0.28, s * 0.05); g.fill();
       g.strokeStyle = '#6f9a4a'; g.lineWidth = s * 0.07; g.lineCap = 'round';
@@ -321,6 +363,9 @@ const RECIPES = [
   { out: ['ladder', 4], in: { plank: 2, stick: 2 }, station: null },
   { out: ['home_flag', 1], in: {}, station: null },
   { out: ['plan', 1], in: {}, station: null },
+  { out: ['grenade', 1], in: { iron: 3, scrap: 4, coal: 5 }, station: 'workbench' },
+  { out: ['c4', 1], in: { iron: 10, scrap: 16, coal: 18, rag: 2 }, station: 'workbench' },
+  { out: ['refinery', 1], in: { iron: 18, stone: 24, scrap: 10 }, station: 'workbench' },
   { out: ['hammer', 1], in: { wood: 10, stone: 4 }, station: null },
   { out: ['campfire', 1], in: { stick: 4, stone: 4 }, station: null },
   { out: ['canteen', 1], in: { scrap: 2 }, station: null },

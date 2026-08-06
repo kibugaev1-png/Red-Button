@@ -4,7 +4,9 @@
 // для столкновений — так дешевле и красивее, чем текстурить каждую частицу.
 'use strict';
 
-const GRID = 6;                      // модуль сетки в частицах (48 px)
+// Модуль сетки. 8 частиц = 64 px: человек ростом 54 px проходит в проём свободно.
+// На 6 частицах (48 px) дверь была ниже игрока — в неё нельзя было влезть
+const GRID = 8;
 
 const TIERS = [
   {
@@ -151,8 +153,8 @@ const Structures = {
   cellOf(s, x, y) {
     const lx = x - s.gx, ly = y - s.gy;
     if (s.part.pass) return false;                                  // мебель проходима насквозь
-    if (s.part.hole === 'door') return s.open ? (ly < 1) : true;   // открытая дверь пропускает
-    if (s.part.hole === 'window') return !(ly >= 2 && ly <= 3);
+    if (s.part.hole === 'door') return s.open ? (ly < 1) : true;   // открытая дверь пропускает весь проём
+    if (s.part.hole === 'window') return !(ly >= 3 && ly <= 5);
     if (s.part.stairs) return lx >= (s.h - 1 - ly);                // ступени по диагонали
     return true;
   },
@@ -309,13 +311,13 @@ const Structures = {
     }
 
     if (s.part.hole === 'window') {
-      this.slab(ctx, x0, y0, w, CELL * 2, p, s.tier);
-      this.slab(ctx, x0, y0 + CELL * 4, w, h - CELL * 4, p, s.tier);
+      this.slab(ctx, x0, y0, w, CELL * 3, p, s.tier);
+      this.slab(ctx, x0, y0 + CELL * 6, w, h - CELL * 6, p, s.tier);
       // рама бойницы
       ctx.strokeStyle = p.dark; ctx.lineWidth = 1.4;
-      ctx.strokeRect(x0 + 0.5, y0 + CELL * 2 + 0.5, w - 1, CELL * 2 - 1);
+      ctx.strokeRect(x0 + 0.5, y0 + CELL * 3 + 0.5, w - 1, CELL * 3 - 1);
       ctx.fillStyle = 'rgba(120,150,160,0.14)';
-      ctx.fillRect(x0 + 1, y0 + CELL * 2 + 1, w - 2, CELL * 2 - 2);
+      ctx.fillRect(x0 + 1, y0 + CELL * 3 + 1, w - 2, CELL * 3 - 2);
       this.hpBar(ctx, s, x0, y0, w);
       ctx.restore(); return;
     }

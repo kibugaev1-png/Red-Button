@@ -48,6 +48,8 @@ const Game = {
     Doors.list.length = 0;
     Structures.reset();
     Nodes.seed();
+    Throwables.list.length = 0;
+    Explosions.list.length = 0;
 
     // стартовый набор строителя: план, молоток и материал на первый дом
     Player.inv.add('plan', 1);
@@ -239,6 +241,8 @@ const Game = {
       Home.update(dt);
       Doors.update(dt);
       Structures.update(dt);
+      Throwables.update(dt);
+      Explosions.update(dt);
       Nodes.update(dt);
 
       // взаимодействие
@@ -476,7 +480,7 @@ const Game = {
 
     // источники света вырезают тьму
     l.globalCompositeOperation = 'destination-out';
-    const lights = Machines.lights().concat(City.lights());
+    const lights = Machines.lights().concat(City.lights()).concat(Explosions.lights()).concat(Throwables.lights());
     lights.push({ x: Player.x, y: Player.y - 26, r: 165, i: 0.85 });  // фонарь на поясе
     for (const s of lights) {
       const p = this.toScreen(s.x, s.y);
@@ -556,6 +560,8 @@ const Game = {
     }
 
     Bullets.draw(g);
+    Throwables.draw(g);
+    Explosions.draw(g);
     Particles.draw(g);
     Floaters.draw(g);
 

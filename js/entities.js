@@ -602,6 +602,7 @@ const Machines = {
     campfire: { w: 4, h: 2, name: 'Костёр' },
     drill: { w: 4, h: 5, name: 'Автобур' },
     farm: { w: 3, h: 1, name: 'Грядка' },
+    refinery: { w: 5, h: 4, name: 'НПЗ' },
   },
   bed() { return this.list.find(m => m.type === 'bed'); },
   place(itemId, cx, cy) {
@@ -670,10 +671,28 @@ const Machines = {
         const def = ITEMS[m.seed];
         m.growth = Math.min(def.grow, m.growth + dt);
       }
+      if (m.type === 'refinery') {
+        // уголь идёт вдвое эффективнее дерева
+        if (m.fuel <= 0) {
+          if ((m.buffer.coal || 0) > 0) { m.buffer.coal--; m.fuel = 8; m.yield = 2; }
+          else if ((m.buffer.wood || 0) > 0) { m.buffer.wood--; m.fuel = 8; m.yield = 1; }
+        }
+        if (m.fuel > 0) {
+          m.fuel -= dt; m.prog += dt;
+          m.anim += dt;
+          if (Math.random() < dt * 6) Particles.smoke((m.x + m.w - 1) * CELL, (m.y - m.h) * CELL, 'rgba(90,86,80,0.45)');
+          if (m.prog > 2.4) {
+            m.prog = 0;
+            m.out = (m.out || 0) + (m.yield || 1);
+            Floaters.push((m.x + m.w / 2) * CELL, (m.y - m.h) * CELL, '+' + (m.yield || 1) + ' топливо', '#e08a4a');
+          }
+        }
+      }
+
       if (m.type === 'drill') {
         if (m.fuel <= 0) {
-          // автозаправка из внутреннего запаса
-          if ((m.buffer.coal || 0) > 0) { m.buffer.coal--; m.fuel = 18; }
+          // автозаправка из внутреннего запаса топлива
+          if ((m.buffer.fuel || 0) > 0) { m.buffer.fuel--; m.fuel = 26; }
         }
         if (m.fuel > 0) {
           m.fuel -= dt;
@@ -702,19 +721,41 @@ const Machines = {
   },
   // взаимодействие: забрать из бура, собрать урожай, заправить
   interact(m) {
+    if (m.type === 'refinery') {
+      // забираем готовое топливо
+      if ((m.out || 0) > 0) {
+        const left = Player.inv.add('fuel', m.out);
+        const got = m.out - left; m.out = left;
+        if (got) { Player.say('Забрал топливо: ' + got); return; }
+      }
+      // загружаем сырьё
+      const coal = Player.inv.count('coal'), wood = Player.inv.count('wood');
+      if (coal > 0) {
+        const n = Math.min(20, coal);
+        Player.inv.remove('coal', n); m.buffer.coal = (m.buffer.coal || 0) + n;
+        Player.say('НПЗ загружен: ' + n + ' угля'); return;
+      }
+      if (wood > 0) {
+        const n = Math.min(40, wood);
+        Player.inv.remove('wood', n); m.buffer.wood = (m.buffer.wood || 0) + n;
+        Player.say('НПЗ загружен: ' + n + ' дерева'); return;
+      }
+      Player.say('Нужен уголь или дерево');
+      return;
+    }
     if (m.type === 'drill') {
       let took = 0;
-      // сначала заправляем углём из инвентаря
-      const coal = Player.inv.count('coal');
-      if (m.fuel <= 0 && (m.buffer.coal || 0) === 0 && coal > 0) {
-        const n = Math.min(10, coal);
-        Player.inv.remove('coal', n);
-        m.buffer.coal = (m.buffer.coal || 0) + n;
-        Player.say('Заправил автобур: ' + n + ' угля');
+      // сначала заправляем топливом из инвентаря
+      const fuel = Player.inv.count('fuel');
+      if (m.fuel <= 0 && (m.buffer.fuel || 0) === 0 && fuel > 0) {
+        const n = Math.min(10, fuel);
+        Player.inv.remove('fuel', n);
+        m.buffer.fuel = (m.buffer.fuel || 0) + n;
+        Player.say('Заправил бур: ' + n + ' топлива');
         return;
       }
       for (const id in m.buffer) {
-        if (id === 'coal') continue;
+        if (id === 'fuel') continue;
         const n = m.buffer[id];
         if (n <= 0) continue;
         const left = Player.inv.add(id, n);
@@ -722,7 +763,7 @@ const Machines = {
         took += n - left;
       }
       if (took) { Player.say('Забрал из бура: ' + took); Floaters.push((m.x + m.w / 2) * CELL, m.y * CELL - 20, '+' + took, '#cfe0b0'); }
-      else Player.say(m.fuel > 0 ? 'Бур работает, пусто' : 'Буру нужен уголь');
+      else Player.say(m.fuel > 0 ? 'Бур работает, пусто' : 'Буру нужно топливо с НПЗ');
       return;
     }
     if (m.type === 'farm') {
@@ -880,6 +921,33 @@ const Machines = {
         ctx.fillRect(px + w * 0.35, py - h - 3, w * 0.6, 1.4);
         ctx.fillStyle = '#cfc8b4';
         ctx.beginPath(); ctx.roundRect(px + 3, py - h - 4, w * 0.24, 5, 2); ctx.fill();
+      } else if (m.type === 'refinery') {
+        // корпус, труба, бак, манометр
+        ctx.fillStyle = '#4e5359';
+        ctx.beginPath(); ctx.roundRect(px, py - h, w * 0.62, h, 3); ctx.fill();
+        ctx.fillStyle = '#5c6167';
+        ctx.beginPath(); ctx.roundRect(px + 2, py - h + 2, w * 0.62 - 4, h * 0.4, 2); ctx.fill();
+        ctx.fillStyle = '#3c4147';
+        ctx.beginPath(); ctx.roundRect(px + w * 0.66, py - h - 8, w * 0.3, h + 8, 3); ctx.fill();
+        ctx.fillStyle = '#2f3338';
+        ctx.beginPath(); ctx.roundRect(px + w * 0.7, py - h - 16, w * 0.2, 10, 2); ctx.fill();
+        // бак
+        ctx.fillStyle = m.out > 0 ? '#c24a2a' : '#7a4030';
+        ctx.beginPath(); ctx.roundRect(px + 4, py - h * 0.5, w * 0.5, h * 0.42, 3); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.14)';
+        ctx.fillRect(px + 4, py - h * 0.5, w * 0.5, 1.6);
+        // манометр мигает, когда работает
+        const on = m.fuel > 0;
+        ctx.fillStyle = on ? '#8ad06a' : '#5a5f55';
+        ctx.beginPath(); ctx.arc(px + w * 0.5, py - h * 0.78, 3, 0, 7); ctx.fill();
+        if (on) {
+          ctx.strokeStyle = 'rgba(240,200,120,0.5)'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(px + w * 0.5, py - h * 0.78, 5 + Math.sin(m.anim * 6) * 1.5, 0, 7); ctx.stroke();
+        }
+        if ((m.out || 0) > 0) {
+          ctx.fillStyle = '#e8cf72'; ctx.font = '600 7px system-ui';
+          ctx.fillText('топливо ' + m.out, px, py - h - 20);
+        }
       } else if (m.type === 'farm') {
         ctx.fillStyle = '#3f2d1e'; ctx.fillRect(px - 1, py - 3, w + 2, 5);
         ctx.fillStyle = '#5a4229';

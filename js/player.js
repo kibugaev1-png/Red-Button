@@ -280,6 +280,22 @@ const Player = {
     // прицел
     this.aimAng = Math.atan2(Input.wy - (this.y - 41), Input.wx - this.x);
 
+    // взрывчатка: бросок в сторону курсора, сила зависит от дальности прицела
+    if (it && it.type === 'throw') {
+      if ((Input.mclick || Input.rclick || Input.once('KeyQ')) && this.cooldown <= 0) {
+        const slot = this.hand();
+        if (slot && slot.n > 0) {
+          this.cooldown = 0.45;
+          const d = clamp(dist(this.x, this.y - 34, Input.wx, Input.wy) / 26, 3, 11);
+          Throwables.throwIt(slot.id, this.x + this.face * 10, this.y - 36, this.aimAng, d);
+          this.inv.remove(slot.id, 1);
+          this.say(it.name + ' брошена');
+        }
+      }
+      this.digProgress = 0; this.digAnim = undefined;
+      return;
+    }
+
     // строительный план: колесо листает детали, ЛКМ и ПКМ ставят
     if (it && it.type === 'plan') {
       // деталь листается колесом и кнопкой O — как просил
