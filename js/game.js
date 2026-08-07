@@ -60,6 +60,8 @@ const Game = {
     Player.inv.add('home_flag', 1);
     Player.inv.add('shotgun', 1);
     Player.inv.add('buckshot', 40);
+    Player.inv.add('bandage', 5);
+    Player.inv.add('medkit', 1);
     for (const m of Missions.list) { m.state = 0; m.from = 0; }
 
     // стартовый лут в пустоши: противогаз рядом и два ящика без повторов

@@ -162,6 +162,19 @@ const Zombies = {
   // Убитые не возвращаются
   nests: [],
   addNest(x, y, tier) { this.nests.push({ x, y, tier, alive: null, cleared: false }); },
+  // Этажный зомби привязан к своему этажу: он не сходит с него и не падает вниз.
+  // Иначе вся башня осыпалась игроку на голову
+  holdFloor(z, dt) {
+    const n = z.nest;
+    if (!n) return;
+    if (Math.abs(z.y - n.y) > 40) {          // сорвался или всплыл — возвращаем
+      z.y = n.y; z.vy = 0; z.onGround = true;
+    }
+    if (Math.abs(z.x - n.x) > 150) {          // не убегает с этажа далеко
+      z.x = clamp(z.x, n.x - 150, n.x + 150);
+      z.vx = 0;
+    }
+  },
   updateNests() {
     for (const n of this.nests) {
       if (n.cleared) continue;
@@ -246,20 +259,36 @@ const Zombies = {
       }
       z.phase += dt * (4 + spd * 3);
 
-      // прыжок через уступ
+      // Прыжок только через невысокий уступ вверх. Вниз зомби не сигают:
+      // раньше они прыгали с этажей прямо на голову игроку
       const aheadX = z.x + z.face * 10;
-      if (z.onGround && World.solid(Math.floor(aheadX / CELL), Math.floor((z.y - 6) / CELL))) z.vy = -4.4;
+      const acx = Math.floor(aheadX / CELL);
+      if (z.onGround && World.solid(acx, Math.floor((z.y - 6) / CELL))) z.vy = -4.4;
+
+      // край этажа: если впереди пропасть глубже трёх частиц — разворачиваемся
+      if (z.onGround) {
+        let drop = 0;
+        const fy = Math.floor(z.y / CELL);
+        while (drop < 5 && !World.solid(acx, fy + drop)) drop++;
+        if (drop >= 4) {
+          z.vx = 0;
+          z.wander = -z.wander;
+          if (!z.nest) z.face = -z.face;      // на этаже разворачиваемся, но не уходим
+        }
+      }
 
       z.vy = Math.min(z.vy + GRAV, 13);
       // движение
       const nx = z.x + z.vx;
-      if (!this.hits(z, nx, z.y)) z.x = nx; else if (z.onGround) z.vy = -4.2;
+      if (!this.hits(z, nx, z.y)) z.x = nx; else if (z.onGround && z.vx !== 0) z.vy = -4.2;
       const ny = z.y + z.vy;
       if (!this.hits(z, z.x, ny)) { z.y = ny; z.onGround = false; }
       else {
         if (z.vy > 0) { while (!this.hits(z, z.x, z.y + 1)) z.y += 1; z.onGround = true; }
         z.vy = 0;
       }
+      this.holdFloor(z, dt);
+
       // атака
       z.cd = Math.max(0, (z.cd || 0) - dt);
       if (!Player.dead && Math.abs(Player.x - z.x) < 16 && Math.abs(Player.y - z.y) < 40 && z.cd <= 0) {
