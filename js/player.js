@@ -63,7 +63,10 @@ const Player = {
     this.y = (World.surface[World.spawnX] - 1) * CELL;
     this.inv.add('canteen_dirty', 1);
     this.inv.add('can', 1);
-    this.mag = { pistol: 0, rifle: 0, mg: 0 };
+    // магазин заводим на каждый вид оружия: у новых стволов его не было,
+    // и вместо числа патронов в HUD показывалось NaN
+    this.mag = {};
+    for (const id in ITEMS) if (ITEMS[id].type === 'gun') this.mag[ITEMS[id].kind] = 0;
   },
 
   say(t) { this.msg = t; this.msgT = 3.4; },
@@ -254,8 +257,10 @@ const Player = {
   needs(dt) {
     const sprinting = Math.abs(this.vx) > 2;
     const meta = 1 - 0.12 * this.skills.meta;
-    this.food -= dt * (0.30 + (sprinting ? 0.2 : 0)) * meta;
-    this.water -= dt * (0.42 + (sprinting ? 0.25 : 0)) * meta;
+    // Одна единица примерно за 15 секунд: полные 300 держатся больше часа игры.
+    // Бег ускоряет расход в полтора раза, не больше
+    this.food -= dt * (1 / 15) * (sprinting ? 1.5 : 1) * meta;
+    this.water -= dt * (1 / 13) * (sprinting ? 1.5 : 1) * meta;
 
     // радиация. В противогазе с живым фильтром — не растёт вообще и медленно сходит.
     // Без противогаза копится не спеша, и вредит только выше 30%.

@@ -32,10 +32,10 @@ const Game = {
   start() {
     World.generate(Math.floor(Math.random() * 1e9));
     Particles.list.length = 0; Floaters.list.length = 0; Bullets.list.length = 0;
-    Zombies.list.length = 0; Drops.list.length = 0;
+    Zombies.list.length = 0; Zombies.nests.length = 0; Drops.list.length = 0;
     Machines.list.length = 0; Machines.torches.length = 0;
     Player.dead = false;
-    Player.hp = 100; Player.food = 240; Player.water = 220; Player.rad = 6;
+    Player.hp = 100; Player.food = FOOD_MAX; Player.water = WATER_MAX; Player.rad = 6;
     Player.mask = false; Player.filterWear = 100;
     Player.init();
     this.time = DAY_LEN * 0.34; this.day = 1;
@@ -58,6 +58,8 @@ const Game = {
     Player.inv.add('stone', 60);
     Player.inv.add('ladder', 12);
     Player.inv.add('home_flag', 1);
+    Player.inv.add('shotgun', 1);
+    Player.inv.add('buckshot', 40);
     for (const m of Missions.list) { m.state = 0; m.from = 0; }
 
     // стартовый лут в пустоши: противогаз рядом и два ящика без повторов
@@ -95,8 +97,15 @@ const Game = {
     for (const s of World.lootSpots) {
       if (s.kind === 'tower_top') {
         Drops.addCrate(s.x, s.y + 1, [['mg', 1], ['zinc762', 1], ['ammo762', 100]], true);
+        // хозяин высотки — последний, двадцатый вид, с пулемётом
+        if (s.floors >= 20) Zombies.addNest(s.x * CELL, s.y * CELL, ZTYPES.length - 1);
       } else if (s.kind === 'tower') {
         Drops.addCrate(s.x, s.y + 1, towerLoot[ti++ % towerLoot.length], true);
+      } else if (s.kind === 'tower_mob') {
+        // тип врага растёт с этажом: внизу бродяги, наверху офицеры
+        const frac = s.floor / Math.max(1, s.floors - 1);
+        const tier = Math.round(frac * (ZTYPES.length - 2));
+        Zombies.addNest(s.x * CELL, s.y * CELL, tier);
       }
     }
 
@@ -109,24 +118,13 @@ const Game = {
     this.cam.y = Player.y - UI.H / (2 * this.zoom);
   },
 
-  // переход в другую локацию: не мгновенно — дорога отнимает время, еду и воду
+  // Телепортов больше нет: карта показывает, где что, а дойти надо ногами.
+  // Мгновенные переходы ломали и сложность, и ощущение расстояния
   travel(zone) {
-    const from = Player.x;
     const cx = Math.floor((zone.x0 + zone.x1) / 2);
-    const km = Math.abs(cx * CELL - from) / CELL / 420;
-    Player.x = cx * CELL + 4;
-    Player.y = (World.surface[cx] - 2) * CELL;
-    Player.vx = 0; Player.vy = 0; Player.fallStart = null;
-    Player.food = clamp(Player.food - km * 6, 1, FOOD_MAX);
-    Player.water = clamp(Player.water - km * 8, 1, WATER_MAX);
-    this.time += km * 6;
-    if (this.time > DAY_LEN) { this.time -= DAY_LEN; this.day++; }
-    Zombies.list.length = 0;
-    this.cam.x = Player.x - UI.W / (2 * this.zoom);
-    this.cam.y = Player.y - UI.H / (2 * this.zoom);
+    const km = (Math.abs(cx * CELL - Player.x) / CELL / 100).toFixed(1);
+    Player.say(zone.name + ': ' + (cx * CELL > Player.x ? 'на восток' : 'на запад') + ', ' + km + ' км пешком');
     UI.screen = null;
-    Player.say('Переход: ' + zone.name);
-    this.travelFade = 1;
   },
 
   sleep() {
@@ -262,8 +260,11 @@ const Game = {
         this.hint = door.open ? 'E — закрыть дверь' : 'E — открыть дверь';
         if (Input.once('KeyE')) Doors.toggle(door);
       } else if (c) {
-        this.hint = c.kind === 'trader' ? 'E — торговать' : 'E — доска заданий';
-        if (Input.once('KeyE')) UI.screen = c.kind === 'trader' ? 'shop' : 'board';
+        this.hint = c.kind === 'trader' ? 'E — торговать: ' + c.trader.def.name : 'E — доска заданий';
+        if (Input.once('KeyE')) {
+          if (c.kind === 'trader') { UI.shopTrader = c.trader.def; Player.say(c.trader.def.greet); UI.screen = 'shop'; }
+          else UI.screen = 'board';
+        }
       } else if (d) {
         this.hint = d.crate ? 'E — вскрыть ' + (d.military ? 'военный ящик' : 'ящик') : 'E — взять ' + ITEMS[d.id].name + (d.n > 1 ? ' ×' + d.n : '');
         if (Input.once('KeyE')) {

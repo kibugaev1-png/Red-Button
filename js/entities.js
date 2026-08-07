@@ -72,9 +72,10 @@ const Floaters = {
 
 const Bullets = {
   list: [],
-  spawn(x, y, ang, dmg, kind) {
+  spawn(x, y, ang, dmg, kind, foe) {
     const sp = kind === 'pistol' ? 15 : kind === 'rifle' ? 21 : 24;
-    this.list.push({ x, y, px: x, py: y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, dmg, life: 1.1, t: 0 });
+    // foe — пуля врага: бьёт игрока и не трогает своих
+    this.list.push({ x, y, px: x, py: y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, dmg, life: 1.1, t: 0, foe: !!foe });
   },
   update(dt) {
     for (let i = this.list.length - 1; i >= 0; i--) {
@@ -90,6 +91,17 @@ const Bullets = {
           const mi = World.info(Math.floor(b.x / CELL), Math.floor(b.y / CELL));
           if (mi) Particles.burst(b.x, b.y, mi.c, 2);
           hit = true; break;
+        }
+        // вражеская пуля ищет игрока, своя — зомби
+        if (b.foe) {
+          if (!Player.dead && Math.abs(b.x - Player.x) < 10 && b.y > Player.y - 52 && b.y < Player.y) {
+            Player.hp -= b.dmg;
+            if (Math.random() < 0.4) Player.wound(pick(['torso', 'armL', 'armR', 'legL', 'legR']), Math.random() < 0.25 ? 2 : 1);
+            for (let k = 0; k < 6; k++) Particles.blood(b.x, b.y);
+            Game.shake = 4;
+            hit = true; break;
+          }
+          continue;
         }
         for (const z of Zombies.list) {
           if (z.hp <= 0) continue;
@@ -117,10 +129,56 @@ const Bullets = {
   }
 };
 
+// Двадцать видов заражённых. tier — насколько поздно встречается и насколько
+// страшен: по нему же растёт сложность этажей в небоскрёбе
+const ZTYPES = [
+  { id: 'shambler',  name: 'Бродяга',        tier: 1,  hp: 55,   spd: 0.55, dmg: 6,  scale: 1.00, skin: '#79906f', rag: '#4e4b3f' },
+  { id: 'crawler',   name: 'Ползун',         tier: 2,  hp: 40,   spd: 0.75, dmg: 5,  scale: 0.72, skin: '#8a9c78', rag: '#46443a', low: true },
+  { id: 'dog',       name: 'Заражённый пёс', tier: 3,  hp: 45,   spd: 2.05, dmg: 9,  scale: 0.85, skin: '#7d6a52', rag: '#5a4a38', quad: true },
+  { id: 'runner',    name: 'Бегун',          tier: 4,  hp: 55,   spd: 1.85, dmg: 8,  scale: 0.96, skin: '#93a381', rag: '#3f4438' },
+  { id: 'worker',    name: 'Рабочий',        tier: 5,  hp: 95,   spd: 0.65, dmg: 10, scale: 1.05, skin: '#6f8566', rag: '#7a6a2e', helmet: true },
+  { id: 'bloated',   name: 'Раздутый',       tier: 6,  hp: 130,  spd: 0.42, dmg: 12, scale: 1.22, skin: '#8fa07e', rag: '#4a4a3c', fat: true },
+  { id: 'spitter',   name: 'Плевун',         tier: 7,  hp: 70,   spd: 0.7,  dmg: 7,  scale: 1.00, skin: '#7fa06a', rag: '#3e4c36', spit: true },
+  { id: 'wolf',      name: 'Волк-мутант',    tier: 8,  hp: 85,   spd: 2.35, dmg: 14, scale: 1.00, skin: '#6a6152', rag: '#4a4438', quad: true },
+  { id: 'soldier',   name: 'Солдат',         tier: 9,  hp: 140,  spd: 0.95, dmg: 14, scale: 1.05, skin: '#6c8062', rag: '#4b5540', armor: true, helmet: true },
+  { id: 'burnt',     name: 'Обожжённый',     tier: 10, hp: 110,  spd: 1.15, dmg: 13, scale: 1.00, skin: '#5c534c', rag: '#33302c', burn: true },
+  { id: 'stalker',   name: 'Сталкер',        tier: 11, hp: 120,  spd: 1.55, dmg: 15, scale: 1.02, skin: '#6d8a70', rag: '#43503f', mask: true },
+  { id: 'brute',     name: 'Громила',        tier: 12, hp: 260,  spd: 0.6,  dmg: 22, scale: 1.42, skin: '#758a68', rag: '#4a4738', fat: true },
+  { id: 'hound',     name: 'Гончая пепла',   tier: 13, hp: 130,  spd: 2.6,  dmg: 18, scale: 1.05, skin: '#4f4a45', rag: '#3a3632', quad: true, burn: true },
+  { id: 'medic',     name: 'Санитар',        tier: 14, hp: 170,  spd: 1.05, dmg: 16, scale: 1.05, skin: '#87a184', rag: '#c9c6bb', heals: true },
+  { id: 'trooper',   name: 'Штурмовик',      tier: 15, hp: 220,  spd: 1.2,  dmg: 20, scale: 1.08, skin: '#66795e', rag: '#3f4a3a', armor: true, helmet: true },
+  { id: 'juggernaut',name: 'Тяжёлый',        tier: 16, hp: 420,  spd: 0.55, dmg: 28, scale: 1.55, skin: '#6b7d62', rag: '#4c5340', armor: true, fat: true },
+  { id: 'screamer',  name: 'Крикун',         tier: 17, hp: 200,  spd: 1.35, dmg: 17, scale: 1.10, skin: '#9fb08c', rag: '#3c4636', screams: true },
+  { id: 'gunner',    name: 'Стрелок',        tier: 18, hp: 240,  spd: 1.0,  dmg: 18, scale: 1.08, skin: '#6a7f66', rag: '#454f3c', armor: true, gun: 'pistol' },
+  { id: 'officer',   name: 'Офицер',         tier: 19, hp: 340,  spd: 1.25, dmg: 24, scale: 1.14, skin: '#647a5e', rag: '#3b4636', armor: true, helmet: true, gun: 'rifle' },
+  { id: 'warlord',   name: 'Хозяин высотки', tier: 20, hp: 900,  spd: 1.15, dmg: 34, scale: 1.75, skin: '#5f7358', rag: '#33402f', armor: true, helmet: true, gun: 'mg', boss: true }
+];
+function ztype(i) { return ZTYPES[clamp(i, 0, ZTYPES.length - 1)]; }
+
 const Zombies = {
   list: [],
+  // Гнёзда: заранее размеченные места на этажах башен. Зомби не висят в мире
+  // постоянно — они поднимаются, когда игрок подходит, и исчезают, когда уходит.
+  // Убитые не возвращаются
+  nests: [],
+  addNest(x, y, tier) { this.nests.push({ x, y, tier, alive: null, cleared: false }); },
+  updateNests() {
+    for (const n of this.nests) {
+      if (n.cleared) continue;
+      const near = Math.abs(n.x - Player.x) < 1400 && Math.abs(n.y - Player.y) < 1400;
+      if (near && !n.alive) {
+        n.alive = this.make(n.x, n.y, n.tier, Player.x > n.x ? 1 : -1);
+        n.alive.nest = n;
+      } else if (!near && n.alive) {
+        const i = this.list.indexOf(n.alive);
+        if (i >= 0) this.list.splice(i, 1);
+        n.alive = null;
+      }
+    }
+  },
   spawnTimer: 4,
   update(dt) {
+    this.updateNests();
     // ночью лезут, днём почти нет; в мёртвой зоне лезут всегда, в городе никогда
     const night = Game.nightAmount();
     const zm = zoneAtPx(Player.x).zombies;
@@ -136,26 +194,56 @@ const Zombies = {
       if (z.hp <= 0) {
         if (!z.counted) {
           z.counted = true;
-          const gain = 2 + (Player.skills.trade >= 3 ? 1 : 0);
+          const tier = z.type ? z.type.tier : 1;
+          const gain = Math.round((1 + tier * 0.6) * (Player.skills.trade >= 3 ? 1.5 : 1));
           Player.coins += gain;
           Player.kills++;
           Missions.onKill();
           Floaters.push(z.x, z.y - 50, '+' + gain + ' монет', '#e8cf72');
         }
+        if (z.nest) { z.nest.cleared = true; z.nest.alive = null; z.nest = null; }
         z.dieT = (z.dieT || 0) + dt;
         if (z.dieT > 0.9) {
+          // чем страшнее был враг, тем интереснее с него падает
+          const tt = z.type || ZTYPES[0];
           if (Math.random() < 0.75) Drops.add(z.x, z.y - 10, Math.random() < 0.55 ? 'rag' : 'meat_rot', 1);
+          if (tt.armor && Math.random() < 0.5) Drops.add(z.x, z.y - 10, 'scrap', irnd(1, 3));
+          if (tt.gun && Math.random() < 0.6) {
+            const ammo = tt.gun === 'pistol' ? 'ammo9' : tt.gun === 'rifle' ? 'ammo545' : 'ammo762';
+            Drops.add(z.x, z.y - 10, ammo, irnd(6, 18));
+          }
+          if (tt.boss) {
+            Drops.add(z.x, z.y - 12, 'mg', 1);
+            Drops.add(z.x + 10, z.y - 12, 'zinc762', 1);
+            Drops.add(z.x - 10, z.y - 12, 'medkit', 2);
+          }
           this.list.splice(i, 1);
         }
         continue;
       }
       const dx = Player.x - z.x;
       const far = Math.abs(dx) > 900;
-      if (far) { this.list.splice(i, 1); continue; }
+      if (far && !z.nest) { this.list.splice(i, 1); continue; }
       z.face = dx > 0 ? 1 : -1;
-      const see = Math.abs(dx) < 320 && !Player.dead;
-      const spd = see ? z.speed : z.speed * 0.35;
+      const t = z.type || ZTYPES[0];
+      const see = Math.abs(dx) < (t.gun ? 620 : 320) && !Player.dead;
+      let spd = see ? z.speed : z.speed * 0.35;
+      // вооружённые не лезут в упор: подходят на дистанцию выстрела и стреляют
+      if (t.gun && see && Math.abs(dx) < 210) spd = -z.speed * 0.5;
       z.vx = (see ? z.face : z.wander) * spd;
+      if (t.gun && see) {
+        z.shootCd -= dt;
+        if (z.shootCd <= 0 && Math.abs(dx) < 620) {
+          z.shootCd = t.gun === 'mg' ? rnd(0.12, 0.2) : t.gun === 'rifle' ? rnd(0.5, 1.1) : rnd(0.9, 1.6);
+          const ang = Math.atan2((Player.y - 30) - (z.y - 34), Player.x - z.x) + rnd(-0.09, 0.09);
+          Bullets.spawn(z.x + z.face * 12, z.y - 34, ang, t.gun === 'mg' ? 9 : t.gun === 'rifle' ? 12 : 8, t.gun, true);
+          Particles.flash(z.x + z.face * 18, z.y - 34, ang);
+        }
+      }
+      // крикун зовёт остальных
+      if (t.screams && see && Math.random() < dt * 0.35) {
+        for (const o of this.list) if (o !== z && Math.abs(o.x - z.x) < 700) o.alerted = 2;
+      }
       z.phase += dt * (4 + spd * 3);
 
       // прыжок через уступ
@@ -190,16 +278,39 @@ const Zombies = {
     for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) if (World.solid(cx, cy)) return true;
     return false;
   },
+  // Кого именно поднимать: зависит от опасности локации и от прожитых дней.
+  // В спокойных местах бродяги и псы, в мёртвой зоне — солдаты и громилы
+  pickTier() {
+    const z = zoneAtPx(Player.x);
+    const danger = z.zombies || 1;
+    const byDay = Math.min(6, (Game.day - 1) * 0.6);
+    const base = danger * 2.2 + byDay;
+    const spread = 2 + danger;
+    return clamp(Math.round(base + rnd(-spread, spread)), 0, ZTYPES.length - 4);
+  },
+
+  make(x, y, tierIdx, face) {
+    const t = ztype(tierIdx);
+    const z = {
+      type: t, x, y, vx: 0, vy: 0,
+      hp: t.hp * rnd(0.9, 1.15), maxHp: t.hp,
+      dmg: t.dmg, speed: t.spd * rnd(0.92, 1.08),
+      face: face || (Math.random() < 0.5 ? -1 : 1),
+      phase: Math.random() * 6, onGround: false,
+      wander: Math.random() < 0.5 ? -1 : 1,
+      pale: Math.random() < 0.4, shootCd: rnd(1, 3)
+    };
+    z.maxHp = z.hp;
+    this.list.push(z);
+    return z;
+  },
+
   spawn() {
     const side = Math.random() < 0.5 ? -1 : 1;
     const x = Player.x + side * rnd(340, 620);
     const cx = clamp(Math.floor(x / CELL), 4, WW - 5);
     const y = (World.surface[cx] - 1) * CELL;
-    this.list.push({
-      x: cx * CELL, y, vx: 0, vy: 0, hp: 55 + Math.random() * 40, dmg: 6 + Math.random() * 5,
-      speed: rnd(0.55, 1.0), face: -side, phase: Math.random() * 6, onGround: false,
-      wander: Math.random() < 0.5 ? -1 : 1, pale: Math.random() < 0.4
-    });
+    return this.make(cx * CELL, y, this.pickTier(), -side);
   },
   draw(ctx) {
     for (const z of this.list) {
@@ -439,12 +550,42 @@ const Home = {
 };
 
 // ---- город: торговец и доска заданий ----
-const SHOP = [
-  ['plank', 1, 2], ['stone', 1, 2], ['coal', 5, 3], ['iron', 5, 8], ['copper', 5, 7],
-  ['filter', 1, 14], ['bandage', 1, 6], ['splint', 1, 12], ['medkit', 1, 26], ['antirad', 1, 10],
-  ['can', 1, 8], ['canteen_clean', 1, 5], ['seeds', 2, 6],
-  ['ammo9', 15, 10], ['ammo545', 15, 14], ['ammo762', 15, 18], ['zinc9', 1, 90]
+// Торговцы разные: у каждого своя специальность, свой прилавок и свой вид.
+// Один торгует железом, другой лечит, третий продаёт патроны
+const TRADERS = [
+  {
+    id: 'quartermaster', name: 'Завхоз', zone: 'city', at: 0.5, coat: '#6b5a3c', hat: '#4a3f2a',
+    greet: 'Бери что надо, только не задерживай очередь.',
+    stock: [['plank', 5, 6], ['stone', 10, 8], ['wood', 20, 10], ['coal', 5, 3],
+            ['iron', 5, 8], ['copper', 5, 7], ['scrap', 5, 6], ['ladder', 4, 5]]
+  },
+  {
+    id: 'medic', name: 'Фельдшер', zone: 'city', at: 0.28, coat: '#b9b3a2', hat: '#8f8b7c',
+    greet: 'Раны показывай сразу, не жди, пока почернеют.',
+    stock: [['bandage', 2, 9], ['splint', 1, 12], ['medkit', 1, 26], ['antirad', 1, 10],
+            ['filter', 1, 14], ['can', 2, 12], ['canteen_clean', 2, 8], ['seeds', 2, 6]]
+  },
+  {
+    id: 'gunsmith', name: 'Оружейник', zone: 'city', at: 0.72, coat: '#4a4e52', hat: '#33373b',
+    greet: 'Патроны есть. Стрелять научишься сам.',
+    stock: [['ammo9', 20, 12], ['ammo545', 20, 16], ['ammo762', 20, 20], ['buckshot', 10, 14],
+            ['zinc9', 1, 90], ['pistol', 1, 120], ['shotgun', 1, 210], ['grenade', 1, 60]]
+  },
+  {
+    id: 'prospector', name: 'Старатель', zone: 'mine', at: 0.5, coat: '#7a5a34', hat: '#5c4426',
+    greet: 'Наверху за это дадут вдвое. Но наверх ещё дойти надо.',
+    stock: [['pick', 1, 90], ['torch', 6, 8], ['coal', 10, 5], ['iron', 10, 14],
+            ['drill', 1, 260], ['fuel', 5, 18], ['canteen_clean', 1, 5]]
+  },
+  {
+    id: 'scav', name: 'Барахольщик', zone: 'waste', at: 0.78, coat: '#5e5344', hat: '#453c30',
+    greet: 'Хлам? Это не хлам. Это запчасти.',
+    stock: [['scrap', 10, 9], ['rag', 6, 4], ['plank', 6, 7], ['bandage', 1, 7],
+            ['can', 1, 9], ['gasmask', 1, 140], ['filter', 2, 26]]
+  }
 ];
+// общий прайс на случай, если торговец не найден
+const SHOP = TRADERS[0].stock;
 
 const Missions = {
   list: [
@@ -485,12 +626,20 @@ const Missions = {
 };
 
 const City = {
-  trader: null, board: null, props: [], lamps: [],
+  trader: null, board: null, props: [], lamps: [], traders: [],
   build() {
     const z = ZONES.find(zz => zz.id === 'city');
     const cx = Math.floor((z.x0 + z.x1) / 2);
     const base = World.surface[cx];
-    this.trader = { x: cx * CELL, y: (base - 1) * CELL, phase: 0 };
+    // каждый торговец стоит в своей локации на своём месте
+    this.traders = [];
+    for (const def of TRADERS) {
+      const zz = ZONES.find(q => q.id === def.zone);
+      if (!zz) continue;
+      const tx = Math.round(zz.x0 + (zz.x1 - zz.x0) * def.at);
+      this.traders.push({ def, x: tx * CELL, y: (World.surface[tx] - 1) * CELL, phase: Math.random() * 6 });
+    }
+    this.trader = this.traders[0];
     this.board = { x: (cx + 14) * CELL, y: (base - 1) * CELL };
     // фонари, бочки, мешки, ящики, вывески — то, что делает город обжитым
     this.props = []; this.lamps = [];
@@ -509,14 +658,15 @@ const City = {
     return this.lamps.map(l => ({ x: l.x, y: l.y - 46, r: 190, i: 0.95 }));
   },
   nearest(x, y, r) {
-    if (!this.trader) return null;
-    if (dist(x, y, this.trader.x, this.trader.y - 26) < r) return { kind: 'trader' };
-    if (dist(x, y, this.board.x, this.board.y - 26) < r) return { kind: 'board' };
+    for (const t of this.traders) {
+      if (dist(x, y, t.x, t.y - 26) < r) return { kind: 'trader', trader: t };
+    }
+    if (this.board && dist(x, y, this.board.x, this.board.y - 26) < r) return { kind: 'board' };
     return null;
   },
-  update(dt) { if (this.trader) this.trader.phase += dt; },
+  update(dt) { for (const t of this.traders) t.phase += dt; },
   draw(ctx) {
-    if (!this.trader) return;
+    if (!this.traders.length) return;
     // ---- обстановка города ----
     for (const p of this.props) {
       ctx.save(); ctx.translate(p.x, p.y);
@@ -561,29 +711,47 @@ const City = {
       gr.addColorStop(1, 'rgba(255,210,120,0)');
       ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(l.x + 8, l.y - 40, 16 * flick, 0, 7); ctx.fill();
     }
-    const t = this.trader;
-    // торговец: тот же каркас человека, но в плаще и с ящиком
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.beginPath(); ctx.ellipse(t.x, t.y, 10, 2.6, 0, 0, 7); ctx.fill();
-    drawHuman(ctx, t.x, t.y, { skin: 2, hair: 1, hairStyle: 3, beard: true },
-      { face: -1, phase: t.phase, moving: false, mask: true });
-    // плащ поверх
-    ctx.fillStyle = '#4a4436';
-    ctx.beginPath();
-    ctx.moveTo(t.x - 8, t.y - 42); ctx.quadraticCurveTo(t.x - 12, t.y - 12, t.x - 9, t.y - 2);
-    ctx.lineTo(t.x + 8, t.y - 2); ctx.quadraticCurveTo(t.x + 11, t.y - 16, t.x + 7, t.y - 42);
-    ctx.fill();
-    ctx.fillStyle = '#2f2b22'; ctx.fillRect(t.x - 8, t.y - 26, 16, 3);
-    // прилавок
-    ctx.fillStyle = '#6b4a26'; ctx.beginPath(); ctx.roundRect(t.x + 14, t.y - 16, 30, 4, 1.5); ctx.fill();
-    ctx.fillStyle = '#553a1e'; ctx.fillRect(t.x + 17, t.y - 12, 4, 12); ctx.fillRect(t.x + 37, t.y - 12, 4, 12);
-    ctx.fillStyle = '#9aa0a6'; ctx.fillRect(t.x + 20, t.y - 20, 6, 4);
-    ctx.fillStyle = '#a8703c'; ctx.fillRect(t.x + 30, t.y - 19, 8, 3);
-    // вывеска
-    ctx.fillStyle = 'rgba(20,20,18,0.85)';
-    ctx.beginPath(); ctx.roundRect(t.x - 6, t.y - 62, 46, 12, 2); ctx.fill();
-    ctx.fillStyle = '#d8c88a'; ctx.font = '700 7px system-ui'; ctx.textAlign = 'center';
-    ctx.fillText('ТОРГОВЕЦ · E', t.x + 17, t.y - 53);
+    // Каждый торговец рисуется в своём цвете и со своей вывеской
+    for (const t of this.traders) {
+      const d = t.def;
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath(); ctx.ellipse(t.x, t.y, 10, 2.6, 0, 0, 7); ctx.fill();
+      drawHuman(ctx, t.x, t.y, { skin: d.id.length % 5, hair: 1, hairStyle: 3, beard: true },
+        { face: -1, phase: t.phase, moving: false, mask: d.zone !== 'city' });
+      // плащ в цвете лавки
+      ctx.fillStyle = d.coat;
+      ctx.beginPath();
+      ctx.moveTo(t.x - 8, t.y - 42); ctx.quadraticCurveTo(t.x - 12, t.y - 12, t.x - 9, t.y - 2);
+      ctx.lineTo(t.x + 8, t.y - 2); ctx.quadraticCurveTo(t.x + 11, t.y - 16, t.x + 7, t.y - 42);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.fillRect(t.x - 8, t.y - 26, 16, 3);
+      // шапка
+      ctx.fillStyle = d.hat;
+      ctx.beginPath(); ctx.ellipse(t.x - 0.5, t.y - 54, 7, 3.4, 0, Math.PI, 0); ctx.fill();
+      ctx.fillRect(t.x - 8, t.y - 54, 15, 2);
+      // прилавок с товаром
+      ctx.fillStyle = '#6b4a26'; ctx.beginPath(); ctx.roundRect(t.x + 14, t.y - 16, 30, 4, 1.5); ctx.fill();
+      ctx.fillStyle = '#553a1e'; ctx.fillRect(t.x + 17, t.y - 12, 4, 12); ctx.fillRect(t.x + 37, t.y - 12, 4, 12);
+      // на прилавке лежит то, чем он торгует
+      ctx.save(); ctx.translate(t.x + 19, t.y - 30); ctx.scale(0.5, 0.5);
+      const first = ITEMS[d.stock[0][0]]; if (first) first.icon(ctx, 20);
+      ctx.restore();
+      ctx.save(); ctx.translate(t.x + 31, t.y - 29); ctx.scale(0.42, 0.42);
+      const second = ITEMS[d.stock[1][0]]; if (second) second.icon(ctx, 20);
+      ctx.restore();
+      // вывеска с именем
+      const label = d.name.toUpperCase() + ' · E';
+      ctx.font = '700 7px system-ui'; ctx.textAlign = 'center';
+      const lw = Math.max(46, ctx.measureText(label).width + 12);
+      ctx.fillStyle = 'rgba(20,20,18,0.85)';
+      ctx.beginPath(); ctx.roundRect(t.x + 17 - lw / 2, t.y - 62, lw, 12, 2); ctx.fill();
+      ctx.strokeStyle = d.coat; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(t.x + 17 - lw / 2, t.y - 62, lw, 12, 2); ctx.stroke();
+      ctx.fillStyle = '#d8c88a';
+      ctx.fillText(label, t.x + 17, t.y - 53);
+      ctx.textAlign = 'left';
+    }
+
     // доска заданий
     const b = this.board;
     ctx.fillStyle = '#6b4a26'; ctx.fillRect(b.x - 2, b.y - 22, 4, 22);

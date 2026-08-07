@@ -227,7 +227,7 @@ const UI = {
     if (it) {
       this.text(g, it.name, W / 2, hy - 12, '#e8e2ca', 13, '700', 'center');
       if (it.type === 'gun') {
-        const m = P.mag[it.kind], res = P.inv.count(it.ammo);
+        const m = P.mag[it.kind] || 0, res = P.inv.count(it.ammo);
         this.text(g, m + ' / ' + res + (P.reload > 0 ? '   перезарядка…' : ''), W / 2, hy - 30, m > 0 ? '#e8d8a0' : '#d07a5a', 15, '800', 'center');
       } else if (it.desc) {
         this.text(g, it.desc, W / 2, hy - 30, 'rgba(200,190,160,0.55)', 11, '500', 'center');
@@ -591,14 +591,15 @@ const UI = {
     // переход только по отдельному подтверждению — случайный клик никуда не уносит
     const picked = ZONES.find(z => z.id === this.pickedZone && z.id !== here.id);
     if (picked) {
-      if (this.btn(g, px + pw / 2 - 200, py + ph - 62, 400, 40, 'Отправиться в ' + picked.name + ' →')) {
-        this.pickedZone = null;
-        Game.travel(picked);
-      }
+      const cxp = Math.floor((picked.x0 + picked.x1) / 2) * CELL;
+      const km = (Math.abs(cxp - Player.x) / CELL / 100).toFixed(1);
+      const dir = cxp > Player.x ? 'на восток (D)' : 'на запад (A)';
+      this.text(g, picked.name + ' — ' + dir + ', идти ' + km + ' км',
+        px + pw / 2, py + ph - 44, '#e8dfb0', 14, '700', 'center');
     } else {
-      this.text(g, 'выбери локацию, потом подтверди переход', px + pw / 2, py + ph - 40, 'rgba(200,190,160,0.5)', 13, '600', 'center');
+      this.text(g, 'выбери локацию — покажу, куда и сколько идти', px + pw / 2, py + ph - 40, 'rgba(200,190,160,0.5)', 13, '600', 'center');
     }
-    this.text(g, 'Дорога отнимает время, еду и воду. M — закрыть',
+    this.text(g, 'Телепортов нет: все переходы пешком. M — закрыть',
       px + pw / 2, py + ph - 14, 'rgba(200,190,160,0.45)', 12, '500', 'center');
   },
 
@@ -636,12 +637,16 @@ const UI = {
   },
 
   // ---- торговец ----
+  shopTrader: null,
+
   drawShop(g) {
     const W = this.W, H = this.H;
     g.fillStyle = 'rgba(0,0,0,0.66)'; g.fillRect(0, 0, W, H);
     const pw = 900, ph = 560, px = W / 2 - pw / 2, py = H / 2 - ph / 2;
     const disc = 1 - 0.08 * Player.skills.trade;
-    this.panel(g, px, py, pw, ph, 'Торговец' + (Player.skills.trade ? ' · скидка ' + Math.round((1 - disc) * 100) + '%' : ''));
+    const who = this.shopTrader ? this.shopTrader.name : 'Торговец';
+    this.panel(g, px, py, pw, ph, who + (Player.skills.trade ? ' · скидка ' + Math.round((1 - disc) * 100) + '%' : ''));
+    if (this.shopTrader) this.text(g, this.shopTrader.greet, px + pw - 16, py + 26, 'rgba(200,190,160,0.55)', 12, '500', 'right');
     this.text(g, Player.coins + ' монет', px + pw - 24, py + 26, '#e8cf72', 15, '800', 'right');
 
     let i = 0;

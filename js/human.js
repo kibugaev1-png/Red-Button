@@ -326,46 +326,141 @@ function drawWeapon(ctx, x, y, ang, kind, recoil) {
 
 // зомби: тот же каркас, но перекошенный и гнилой
 function drawZombie(ctx, px, py, z) {
+  const t = z.type || { skin: '#79906f', rag: '#4e4b3f', scale: 1 };
   const face = z.face;
-  const t = z.phase;
+  const ph = z.phase;
+  const sc = t.scale || 1;
+  const skin = z.pale ? shade(t.skin, 1.12) : t.skin;
+  const skinD = shade(skin, 0.72);
+  const rags = t.rag;
+
   ctx.save();
-  ctx.translate(px, py); ctx.scale(face, 1);
-  const skin = z.pale ? '#8f9e86' : '#79906f', skinD = shade(skin, 0.72);
-  const rags = '#4e4b3f';
+  ctx.translate(px, py);
+  ctx.scale(face * sc, sc);
+
+  // ---- четвероногие: пёс, волк, гончая ----
+  if (t.quad) {
+    const bodyY = -16, gait = Math.sin(ph * 1.6);
+    ctx.translate(0, -Math.abs(gait) * 1.6);
+    // задние и передние лапы
+    for (const [ox, off, back] of [[-8, 0, true], [-6, 1.9, false], [7, 0.9, true], [9, 2.8, false]]) {
+      const sw = Math.sin(ph * 1.6 + off) * 0.7;
+      const [kx, ky] = limb(ctx, ox, bodyY + 3, 8, sw + 0.2, 3.4 * (back ? 0.85 : 1), back ? shade(skin, 0.66) : skinD);
+      limb(ctx, kx, ky, 8, -sw * 0.6 + 0.3, 2.8, back ? shade(skin, 0.6) : shade(skinD, 0.9));
+    }
+    // корпус
+    const bg = ctx.createLinearGradient(0, bodyY - 7, 0, bodyY + 5);
+    bg.addColorStop(0, shade(skin, 1.08)); bg.addColorStop(1, skinD);
+    ctx.fillStyle = bg;
+    ctx.beginPath(); ctx.ellipse(0, bodyY, 12, 6.4, 0, 0, 7); ctx.fill();
+    // рёбра наружу
+    ctx.strokeStyle = 'rgba(30,28,24,0.35)'; ctx.lineWidth = 0.8;
+    for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(i * 3, bodyY - 4); ctx.lineTo(i * 3 + 1, bodyY + 3); ctx.stroke(); }
+    // хвост
+    ctx.strokeStyle = skinD; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-11, bodyY - 1);
+    ctx.quadraticCurveTo(-17, bodyY - 4 + gait * 2, -19, bodyY - 9 + gait * 3); ctx.stroke();
+    // шея и морда
+    ctx.strokeStyle = skin; ctx.lineWidth = 5.5;
+    ctx.beginPath(); ctx.moveTo(8, bodyY - 2); ctx.lineTo(14, bodyY - 6); ctx.stroke();
+    ctx.fillStyle = skin;
+    ctx.beginPath(); ctx.ellipse(15.5, bodyY - 7, 5, 4, -0.2, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(18, bodyY - 6); ctx.lineTo(23, bodyY - 4.5); ctx.lineTo(18, bodyY - 3); ctx.fill();
+    // уши, глаз, клыки
+    ctx.fillStyle = skinD;
+    ctx.beginPath(); ctx.moveTo(13, bodyY - 10); ctx.lineTo(15, bodyY - 15); ctx.lineTo(17, bodyY - 10); ctx.fill();
+    ctx.fillStyle = t.burn ? '#e06a3a' : '#c9432c';
+    ctx.beginPath(); ctx.arc(17, bodyY - 7.5, 1.1, 0, 7); ctx.fill();
+    ctx.fillStyle = '#d8d2c0';
+    ctx.fillRect(19, bodyY - 4, 2.4, 1.6);
+    ctx.restore();
+    zHealthBar(ctx, px, py, z, sc);
+    return;
+  }
+
+  // ---- двуногие ----
   const hipY = -23, shoulderY = -40;
-  ctx.translate(0, -Math.abs(Math.sin(t)) * 1.4);
-  // ноги
+  const fat = t.fat ? 1.35 : 1;
+  ctx.translate(0, -Math.abs(Math.sin(ph)) * 1.4);
   for (const [off, back] of [[Math.PI, true], [0, false]]) {
-    const th = Math.sin(t + off) * 0.6, kn = th - Math.max(0, Math.sin(t + off + 1)) * 0.7;
-    const [kx, ky] = limb(ctx, 0, hipY, 12, th + 0.14, 7.5, back ? shade(rags, 0.72) : rags);
+    const th = Math.sin(ph + off) * 0.6, kn = th - Math.max(0, Math.sin(ph + off + 1)) * 0.7;
+    const [kx, ky] = limb(ctx, 0, hipY, 12, th + 0.14, 7.5 * fat, back ? shade(rags, 0.72) : rags);
     limb(ctx, kx, ky, 11, kn + 0.14, 6.4, back ? shade(skin, 0.6) : skinD);
   }
-  // руки вытянуты вперёд
-  for (const [off, back] of [[0.5, true], [0, false]]) {
-    const ah = 1.15 + Math.sin(t * 0.8 + off) * 0.18;
-    const [ex, ey] = limb(ctx, 0, shoulderY + 3, 10, ah, 6, back ? shade(skin, 0.68) : skin);
-    limb(ctx, ex, ey, 10, ah + 0.35, 5.2, back ? shade(skin, 0.62) : skinD);
-    if (!back) { ctx.fillStyle = skinD; ctx.beginPath(); ctx.ellipse(ex + Math.sin(ah + 0.35) * 10, ey + Math.cos(ah + 0.35) * 10, 2.4, 2, 0, 0, 7); ctx.fill(); }
+  // руки: со стволом держат оружие, без — тянутся вперёд
+  if (t.gun) {
+    const ang = 0.1;
+    limb(ctx, -1, shoulderY + 3, 10, Math.PI / 2 - 0.4, 6, shade(skin, 0.68));
+    drawWeapon(ctx, 8, shoulderY + 4, ang, t.gun, 0);
+    limb(ctx, 0, shoulderY + 3, 11, Math.PI / 2 - ang, 6, skin);
+  } else {
+    for (const [off, back] of [[0.5, true], [0, false]]) {
+      const ah = 1.15 + Math.sin(ph * 0.8 + off) * 0.18;
+      const [ex, ey] = limb(ctx, 0, shoulderY + 3, 10, ah, 6, back ? shade(skin, 0.68) : skin);
+      limb(ctx, ex, ey, 10, ah + 0.35, 5.2, back ? shade(skin, 0.62) : skinD);
+    }
   }
-  // торс в лохмотьях
-  ctx.save(); ctx.rotate(0.16);
+  // торс
+  ctx.save(); ctx.rotate(t.low ? 0.5 : 0.16);
   ctx.fillStyle = rags;
   ctx.beginPath();
-  ctx.moveTo(-6, shoulderY + 1); ctx.quadraticCurveTo(-7, hipY - 8, -5, hipY + 1);
-  ctx.lineTo(5, hipY + 1); ctx.quadraticCurveTo(7, hipY - 9, 6, shoulderY + 1);
-  ctx.quadraticCurveTo(0, shoulderY - 2, -6, shoulderY + 1); ctx.fill();
+  ctx.moveTo(-6 * fat, shoulderY + 1); ctx.quadraticCurveTo(-7 * fat, hipY - 8, -5 * fat, hipY + 1);
+  ctx.lineTo(5 * fat, hipY + 1); ctx.quadraticCurveTo(7 * fat, hipY - 9, 6 * fat, shoulderY + 1);
+  ctx.quadraticCurveTo(0, shoulderY - 2, -6 * fat, shoulderY + 1); ctx.fill();
   ctx.fillStyle = skinD; ctx.fillRect(-3, hipY - 12, 5, 7);
   ctx.fillStyle = '#6b3b34'; ctx.fillRect(1, hipY - 9, 3.5, 5);
+  // бронежилет
+  if (t.armor) {
+    ctx.fillStyle = '#3f4a3c';
+    ctx.beginPath(); ctx.roundRect(-6 * fat, shoulderY + 2, 12 * fat, 13, 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(-6 * fat, shoulderY + 2, 12 * fat, 2);
+    ctx.fillStyle = '#2c342a'; ctx.fillRect(-2, shoulderY + 6, 4, 8);
+  }
   ctx.fillStyle = shade(skin, 0.9); ctx.fillRect(-2, shoulderY - 4, 4.4, 6);
   ctx.restore();
   // голова
-  ctx.save(); ctx.translate(1.5, shoulderY - 7); ctx.rotate(0.2);
+  ctx.save(); ctx.translate(1.5, shoulderY - 7); ctx.rotate(t.low ? 0.5 : 0.2);
   ctx.fillStyle = skin; ctx.beginPath(); ctx.ellipse(0, 0, 5.2, 6, 0, 0, 7); ctx.fill();
-  ctx.fillStyle = '#2a1f1c'; ctx.beginPath(); ctx.ellipse(2.6, -1.4, 1.5, 1.8, 0, 0, 7); ctx.fill();
+  if (t.burn) {
+    ctx.fillStyle = 'rgba(30,24,20,0.5)';
+    ctx.beginPath(); ctx.ellipse(-1, 1, 4.4, 4.8, 0, 0, 7); ctx.fill();
+  }
+  ctx.fillStyle = t.boss ? '#ffb03a' : '#2a1f1c';
+  ctx.beginPath(); ctx.ellipse(2.6, -1.4, 1.5, 1.8, 0, 0, 7); ctx.fill();
   ctx.fillStyle = '#d8d2c0'; ctx.fillRect(1.5, 2.6, 3.4, 1.4);
-  ctx.strokeStyle = '#3d2b26'; ctx.lineWidth = 0.9;
-  ctx.beginPath(); ctx.moveTo(-3, -3); ctx.lineTo(1, -4.6); ctx.stroke();
-  ctx.fillStyle = shade(skin, 0.7); ctx.beginPath(); ctx.ellipse(-1, -4.6, 3.6, 2.2, 0, Math.PI, 0); ctx.fill();
+  if (t.mask) {
+    ctx.fillStyle = '#3c4038'; ctx.beginPath(); ctx.ellipse(0.6, 0.4, 5.6, 6.2, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#5f7466'; ctx.beginPath(); ctx.ellipse(2.4, -1, 3, 2.5, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#4a4f45'; ctx.beginPath(); ctx.roundRect(3, 3, 4.6, 4, 1.2); ctx.fill();
+  }
+  if (t.helmet) {
+    ctx.fillStyle = t.boss ? '#4a4030' : '#454f3c';
+    ctx.beginPath(); ctx.ellipse(-0.4, -3.4, 6.2, 4.4, 0, Math.PI, 0); ctx.fill();
+    ctx.fillRect(-6.6, -3.6, 13, 1.8);
+    if (t.boss) { ctx.fillStyle = '#b8452f'; ctx.fillRect(-1, -8.6, 2, 4); }
+  } else {
+    ctx.fillStyle = shade(skin, 0.7);
+    ctx.beginPath(); ctx.ellipse(-1, -4.6, 3.6, 2.2, 0, Math.PI, 0); ctx.fill();
+  }
   ctx.restore();
   ctx.restore();
+  zHealthBar(ctx, px, py, z, sc);
+}
+
+// полоска жизни: только у раненых и у всех крупных тварей
+function zHealthBar(ctx, px, py, z, sc) {
+  if (!z.maxHp) return;
+  const f = clamp(z.hp / z.maxHp, 0, 1);
+  const big = z.type && z.type.tier >= 12;
+  if (f >= 1 && !big) return;
+  const w = 26 * sc, y = py - 56 * sc;
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(px - w / 2, y, w, 3);
+  ctx.fillStyle = z.type && z.type.boss ? '#d8a03a' : f > 0.5 ? '#9a5a4a' : '#c0402c';
+  ctx.fillRect(px - w / 2, y, w * f, 3);
+  if (big) {
+    ctx.font = '600 7px system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(230,220,200,0.8)';
+    ctx.fillText(z.type.name, px, y - 3);
+    ctx.textAlign = 'left';
+  }
 }

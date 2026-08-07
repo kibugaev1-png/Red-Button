@@ -99,7 +99,7 @@ const World = {
       const z = zoneAtCell(x);
       // у каждой локации свой характер рельефа
       const amp = z.id === 'waste' ? 0.35 : z.id === 'mine' ? 0.8 : z.id === 'city' ? 0 : 0.9;
-      let h = 78 + (n1(x / 90) * 16 + n2(x / 28) * 5 + n3(x / 9) * 1.6) * amp;
+      let h = 340 + (n1(x / 90) * 16 + n2(x / 28) * 5 + n3(x / 9) * 1.6) * amp;
       this.surface[x] = Math.round(h);
     }
     // сглаживание, чтобы не было пилы и ступеней, на которых цепляешься
@@ -123,7 +123,7 @@ const World = {
 
     // пещерные системы глубоко — их не выкопать, они уже есть
     for (let x = 0; x < WW; x++) {
-      for (let y = 150; y < WH - 4; y++) {
+      for (let y = this.surface[x] + 70; y < WH - 4; y++) {
         const v = nc(x / 46, y / 30) + nc(x / 17, y / 13) * 0.4;
         if (v > 0.34) this.cells[this.idx(x, y)] = M.AIR;
       }
@@ -215,10 +215,11 @@ const World = {
         this.buildCity(z);
       } else if (z.id === 'towers') {
         // пять высоток разной высоты, между ними — битый бетон
+        // одна громадина на 40 этажей и четыре поменьше рядом
         const gapW = Math.floor((z.x1 - z.x0) / 5);
         for (let i = 0; i < 5; i++) {
           const tx = z.x0 + Math.floor(gapW * (i + 0.5));
-          this.buildSkyscraper(tx, 5 + i % 4, 9001 + i * 137);
+          this.buildSkyscraper(tx, i === 2 ? 40 : 6 + i % 4, 9001 + i * 137);
         }
         for (let x = z.x0 + 2; x < z.x1 - 2; x++) {
           if (rand() < 0.12) this.debris(x, this.surface[x] - 1, rand);
@@ -252,7 +253,9 @@ const World = {
     const base = this.surface[cx];
     const w = 24 + Math.floor(rand() * 12);
     const x0 = cx - Math.floor(w / 2), x1 = x0 + w;
-    const FH = 12;              // высота этажа: под потолком должно быть просторно
+    // У сорокаэтажной башни этажи чуть ниже, иначе она не помещается в небо.
+    // 8 частиц = 64 px, человек ростом 54 px проходит
+    const FH = floors > 20 ? 8 : 12;
     for (let x = x0 - 3; x <= x1 + 3; x++) {
       if (!this.inside(x, 0)) continue;
       for (let y = base - 1; y > 8; y--) if (this.get(x, y) !== M.AIR) this.cells[this.idx(x, y)] = M.AIR;
@@ -292,9 +295,11 @@ const World = {
         const x = x0 + 1 + Math.floor(rand() * (w - 2));
         if (rand() < 0.45 && World.get(x, fy - 2) === M.AIR) this.cells[this.idx(x, fy - 1)] = rand() < 0.6 ? M.CONCRETE : M.BG_METAL;
       }
-      if (f > 0 && f % 2 === 0) this.lootSpots.push({ x: x0 + 5 + Math.floor(rand() * (w - 10)), y: fy - 1, kind: 'tower' });
+      if (f > 0 && f % 2 === 0) this.lootSpots.push({ x: x0 + 5 + Math.floor(rand() * (w - 10)), y: fy - 1, kind: 'tower', floor: f });
+      // на каждом этаже свой хозяин: чем выше, тем страшнее
+      if (f > 0) this.lootSpots.push({ x: x0 + 4 + Math.floor(rand() * (w - 8)), y: fy - 1, kind: 'tower_mob', floor: f, floors: floors });
     }
-    this.lootSpots.push({ x: x0 + Math.floor(w / 2), y: topFloorY - 1, kind: 'tower_top' });
+    this.lootSpots.push({ x: x0 + Math.floor(w / 2), y: topFloorY - 1, kind: 'tower_top', floors: floors });
     // торчащая арматура на срезе
     for (let x = x0; x < x1; x++) {
       if (rand() < 0.6) continue;
@@ -314,7 +319,7 @@ const World = {
   // старый шахтный ствол: широкий, с лестницей на всю глубину
   buildShaft(cx) {
     const top = this.surface[cx];
-    for (let y = top; y < 150; y++) {
+    for (let y = top; y < top + 110; y++) {
       for (let dx = -2; dx <= 2; dx++) this.cells[this.idx(cx + dx, y)] = M.AIR;
       this.cells[this.idx(cx, y)] = M.LADDER;
       this.cells[this.idx(cx + 1, y)] = M.LADDER;
