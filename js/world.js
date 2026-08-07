@@ -6,7 +6,7 @@ const M = {
   TRUNK: 8, LEAF: 9, CONCRETE: 10, PLANK: 11, WATER: 12, FARM: 13, REBAR: 14, ASH: 15,
   LADDER: 16, WALL_W: 17, FLOOR_W: 18, ROOF_W: 19,
   DOOR: 20, DOOR_OPEN: 21, METAL: 22, BG_WOOD: 23, BG_METAL: 24,
-  BUILD_W: 25, BUILD_S: 26, BUILD_M: 27
+  BUILD_W: 25, BUILD_S: 26, BUILD_M: 27, GLASSW: 28, BG_CONC: 29
 };
 
 // hard — сколько секунд копать кайлом; drop — id предмета; var — разброс тона
@@ -41,7 +41,9 @@ const MATS = [
   // постройки игрока: рисует их build.js, в породе они только для столкновений
   { name: 'Деревянная постройка', c: [138, 98, 56], var: 0, hard: 0.9, drop: null, solid: true, struct: 0 },
   { name: 'Каменная постройка', c: [124, 127, 132], var: 0, hard: 1.8, drop: null, solid: true, struct: 1 },
-  { name: 'Металлическая постройка', c: [110, 116, 122], var: 0, hard: 3.0, drop: null, solid: true, struct: 2 }
+  { name: 'Металлическая постройка', c: [110, 116, 122], var: 0, hard: 3.0, drop: null, solid: true, struct: 2 },
+  { name: 'Окно', c: [96, 122, 132], var: 10, hard: 0.3, drop: null, solid: true, glass: true },
+  { name: 'Внутренняя стена', c: [58, 58, 60], var: 8, hard: 0.5, drop: null, solid: false, bg: 'conc' }
 ];
 
 const World = {
@@ -99,7 +101,7 @@ const World = {
       const z = zoneAtCell(x);
       // у каждой локации свой характер рельефа
       const amp = z.id === 'waste' ? 0.35 : z.id === 'mine' ? 0.8 : z.id === 'city' ? 0 : 0.9;
-      let h = 340 + (n1(x / 90) * 16 + n2(x / 28) * 5 + n3(x / 9) * 1.6) * amp;
+      let h = 520 + (n1(x / 90) * 16 + n2(x / 28) * 5 + n3(x / 9) * 1.6) * amp;
       this.surface[x] = Math.round(h);
     }
     // сглаживание, чтобы не было пилы и ступеней, на которых цепляешься
@@ -248,14 +250,14 @@ const World = {
 
   // руины небоскрёба: этажи через 8 частиц, сквозная лестничная шахта,
   // обрушенная верхушка. Ящики с оружием на этажах, пулемёт — на верхнем
+  // Целая высотка: сплошные перекрытия, ровный фасад с окнами, крыша с
+  // надстройкой. Никаких провалов и торчащей арматуры — здание стоит как новое
   buildSkyscraper(cx, floors, seed) {
     const rand = mulberry32(seed);
     const base = this.surface[cx];
-    const w = 24 + Math.floor(rand() * 12);
+    const w = 26 + Math.floor(rand() * 10);
     const x0 = cx - Math.floor(w / 2), x1 = x0 + w;
-    // У сорокаэтажной башни этажи чуть ниже, иначе она не помещается в небо.
-    // 8 частиц = 64 px, человек ростом 54 px проходит
-    const FH = floors > 20 ? 8 : 12;
+    const FH = 12;
     for (let x = x0 - 3; x <= x1 + 3; x++) {
       if (!this.inside(x, 0)) continue;
       for (let y = base - 1; y > 8; y--) if (this.get(x, y) !== M.AIR) this.cells[this.idx(x, y)] = M.AIR;
@@ -264,51 +266,55 @@ const World = {
     }
     const shaftX = x0 + 2;
     let topFloorY = base;
+
     for (let f = 0; f < floors; f++) {
       const fy = base - f * FH;
-      if (fy < 16) break;
+      if (fy < 18) break;
       topFloorY = fy;
-      const ruin = f / floors;
-      // плита этажа с провалами — чем выше, тем хуже
-      for (let x = x0; x < x1; x++) {
-        if (f > 0 && rand() < ruin * 0.45) continue;
-        this.cells[this.idx(x, fy)] = M.CONCRETE;
-        if (rand() < 0.28) this.cells[this.idx(x, fy + 1)] = M.REBAR;
-      }
+      // сплошная плита перекрытия
+      for (let x = x0; x < x1; x++) this.cells[this.idx(x, fy)] = M.CONCRETE;
+      // Наружные стены в две частицы, окна лентой посреди этажа, а всё нутро
+      // затянуто фоновой обшивкой — иначе издалека здание выглядит скелетом
       for (let y = fy - 1; y > fy - FH; y--) {
-        for (const wxx of [x0, x1 - 1]) {
-          if (rand() < 0.12 + ruin * 0.4) continue;
-          this.cells[this.idx(wxx, y)] = M.CONCRETE;
+        const row = fy - y;
+        const windowRow = row >= 4 && row <= 8;
+        for (let x = x0; x < x1; x++) this.cells[this.idx(x, y)] = M.BG_CONC;
+        for (const wxx of [x0, x0 + 1, x1 - 2, x1 - 1]) {
+          this.cells[this.idx(wxx, y)] = windowRow ? M.GLASSW : M.CONCRETE;
         }
-        // внутренние колонны — фоновые: видно, но ходить не мешают
-        for (let x = x0 + 9; x < x1 - 2; x += 9) {
-          if (rand() < 0.25 + ruin * 0.3) continue;
-          this.cells[this.idx(x, y)] = M.BG_METAL;
-        }
+        // внутренние перегородки
+        for (let x = x0 + 10; x < x1 - 2; x += 10) this.cells[this.idx(x, y)] = M.BG_METAL;
+        // лестничная шахта
         this.cells[this.idx(shaftX, y)] = M.LADDER;
         this.cells[this.idx(shaftX - 1, y)] = M.AIR;
         this.cells[this.idx(shaftX + 1, y)] = M.AIR;
       }
-      // сквозной проём под лестницу
+      // сквозной проём под лестницу в плите
       for (const dx of [-1, 0, 1]) this.cells[this.idx(shaftX + dx, fy)] = dx === 0 ? M.LADDER : M.AIR;
-      for (let i = 0; i < w * 0.3; i++) {
-        const x = x0 + 1 + Math.floor(rand() * (w - 2));
-        if (rand() < 0.45 && World.get(x, fy - 2) === M.AIR) this.cells[this.idx(x, fy - 1)] = rand() < 0.6 ? M.CONCRETE : M.BG_METAL;
+
+      // Ящик через три этажа и зомби через три этажа — врагов стало втрое меньше
+      if (f > 0 && f % 3 === 0) this.lootSpots.push({ x: x0 + 6 + Math.floor(rand() * (w - 12)), y: fy - 1, kind: 'tower', floor: f });
+      if (f > 0 && f % 3 === 1) this.lootSpots.push({ x: x0 + 5 + Math.floor(rand() * (w - 10)), y: fy - 1, kind: 'tower_mob', floor: f, floors: floors });
+    }
+
+    // крыша: парапет и машинное отделение
+    for (let x = x0 - 1; x <= x1; x++) this.cells[this.idx(x, topFloorY - FH)] = M.CONCRETE;
+    for (const px of [x0 - 1, x1]) {
+      for (let y = topFloorY - FH - 1; y > topFloorY - FH - 4; y--) this.cells[this.idx(px, y)] = M.CONCRETE;
+    }
+    const hx = x0 + Math.floor(w * 0.6);
+    for (let x = hx; x < hx + 8; x++) {
+      for (let y = topFloorY - FH - 1; y > topFloorY - FH - 8; y--) {
+        const edge = x === hx || x === hx + 7 || y === topFloorY - FH - 7;
+        if (edge) this.cells[this.idx(x, y)] = M.METAL;
       }
-      if (f > 0 && f % 2 === 0) this.lootSpots.push({ x: x0 + 5 + Math.floor(rand() * (w - 10)), y: fy - 1, kind: 'tower', floor: f });
-      // на каждом этаже свой хозяин: чем выше, тем страшнее
-      if (f > 0) this.lootSpots.push({ x: x0 + 4 + Math.floor(rand() * (w - 8)), y: fy - 1, kind: 'tower_mob', floor: f, floors: floors });
     }
+    // антенна
+    for (let y = topFloorY - FH - 8; y > topFloorY - FH - 20; y--) this.cells[this.idx(hx + 4, y)] = M.REBAR;
+
     this.lootSpots.push({ x: x0 + Math.floor(w / 2), y: topFloorY - 1, kind: 'tower_top', floors: floors });
-    // торчащая арматура на срезе
-    for (let x = x0; x < x1; x++) {
-      if (rand() < 0.6) continue;
-      if (Math.abs(x - shaftX) <= 1) continue;                 // шахту не перекрываем
-      const h = 1 + Math.floor(rand() * 4);
-      for (let i = 0; i < h; i++) this.cells[this.idx(x, topFloorY - 1 - i)] = M.REBAR;
-    }
-    // финальная зачистка шахты: непрерывная лестница от земли до верха,
-    // иначе подъём упирается в арматуру под перекрытием
+
+    // шахта должна быть сквозной от земли до верха
     for (let y = base - 1; y >= topFloorY - 1; y--) {
       this.cells[this.idx(shaftX, y)] = M.LADDER;
       this.cells[this.idx(shaftX - 1, y)] = M.AIR;
@@ -583,6 +589,14 @@ const World = {
             g.fillStyle = 'rgba(20,12,6,0.45)';
             g.fillRect(px0, py0 + ((y % 3 === 0) ? 0 : S0 - SS), S0, SS * 0.7);
             if (hv > 0.7) { g.fillStyle = 'rgba(120,92,60,0.12)'; g.fillRect(px0 + S0 * 0.4, py0, SS * 0.7, S0); }
+          } else if (mi.bg === 'conc') {
+            // бетонная плита внутри здания: панельные швы и потёки
+            g.fillStyle = 'rgba(0,0,0,0.22)';
+            if ((y % 6) === 0) g.fillRect(px0, py0, S0, SS * 0.8);
+            if ((x % 8) === 0) g.fillRect(px0, py0, SS * 0.8, S0);
+            g.fillStyle = 'rgba(255,255,255,0.04)';
+            if ((y % 6) === 0) g.fillRect(px0, py0 + SS * 0.8, S0, SS * 0.6);
+            if (hv > 0.86) { g.fillStyle = 'rgba(30,26,22,0.25)'; g.fillRect(px0 + S0 * hv2, py0, SS, S0); }
           } else {
             g.fillStyle = 'rgba(255,255,255,0.05)';
             g.fillRect(px0 + S0 * 0.25, py0, SS * 0.8, S0);
@@ -596,6 +610,22 @@ const World = {
         }
         if (mi.build) { this.drawBuildCell(g, lx, ly, x, y, m, mi, hv, hv2); continue; }
         if (mi.metal) { this.drawMetalCell(g, lx, ly, x, y, mi, hv, hv2); continue; }
+        if (mi.glass) {
+          // окна фасада: стеклопакет с бликом и рамой
+          const S2 = CELL * SS, px2 = lx * S2, py2 = ly * S2;
+          const wg = g.createLinearGradient(px2, py2, px2 + S2, py2 + S2);
+          wg.addColorStop(0, 'rgba(150,182,196,0.85)');
+          wg.addColorStop(0.5, 'rgba(88,116,132,0.85)');
+          wg.addColorStop(1, 'rgba(52,74,88,0.9)');
+          g.fillStyle = wg; g.fillRect(px2, py2, S2, S2);
+          g.strokeStyle = 'rgba(40,46,52,0.7)'; g.lineWidth = SS;
+          g.strokeRect(px2 + SS * 0.5, py2 + SS * 0.5, S2 - SS, S2 - SS);
+          if (hv > 0.5) {
+            g.strokeStyle = 'rgba(255,255,255,0.22)'; g.lineWidth = SS * 0.8;
+            g.beginPath(); g.moveTo(px2 + S2 * 0.15, py2 + S2 * 0.8); g.lineTo(px2 + S2 * 0.8, py2 + S2 * 0.15); g.stroke();
+          }
+          continue;
+        }
         if (mi.ladder) {
           const px0 = lx * CELL * SS, py0 = ly * CELL * SS, S0 = CELL * SS;
           g.strokeStyle = '#7a5a34'; g.lineWidth = SS * 1.3;

@@ -3,9 +3,9 @@
 
 const CELL = 8;               // размер частицы породы в мировых пикселях
 const WW = 8000;              // ширина мира в частицах (~64 000 px)
-// Высота мира. Небо занимает большую часть: сорокаэтажной высотке нужно
-// 320 частиц над землёй, плюс 180 частиц породы вниз на шахты и пещеры
-const WH = 520;
+// Высота мира. Небо занимает большую часть: сорокаэтажной высотке с
+// просторными этажами нужно 480 частиц над землёй, плюс 200 вниз на породу
+const WH = 720;
 const CHUNK = 12;             // частиц в чанке
 let SS = 3;                   // суперсэмплинг текстур породы: 3 — красиво, 1 — быстро
 const QUALITY = { high: 3, mid: 2, low: 1 };
@@ -128,10 +128,10 @@ function rgb(r, g, b) { return 'rgb(' + (r | 0) + ',' + (g | 0) + ',' + (b | 0) 
 // ---- ввод ----
 const Input = {
   keys: {}, pressed: {}, mx: 0, my: 0, wx: 0, wy: 0,
-  mdown: false, rdown: false, mclick: false, rclick: false, wheel: 0,
+  mdown: false, rdown: false, mclick: false, rclick: false, wheel: 0, zoomDelta: 0,
   isDown(code) { return !!this.keys[code]; },
   once(code) { if (this.pressed[code]) { this.pressed[code] = false; return true; } return false; },
-  endFrame() { this.mclick = false; this.rclick = false; this.wheel = 0; this.pressed = {}; }
+  endFrame() { this.mclick = false; this.rclick = false; this.wheel = 0; this.zoomDelta = 0; this.pressed = {}; }
 };
 
 function bindInput(canvas) {
@@ -164,5 +164,17 @@ function bindInput(canvas) {
   });
   canvas.addEventListener('contextmenu', e => e.preventDefault());
   addEventListener('contextmenu', e => { if (e.target === canvas) e.preventDefault(); });
-  canvas.addEventListener('wheel', e => { Input.wheel = Math.sign(e.deltaY); e.preventDefault(); }, { passive: false });
+  // Колесо мыши и щипок двумя пальцами на трекпаде — приближение и отдаление.
+  // Трекпад присылает щипок как wheel с ctrlKey, поэтому шаг там мельче
+  canvas.addEventListener('wheel', e => {
+    Input.wheel = Math.sign(e.deltaY);
+    Input.zoomDelta += -e.deltaY * (e.ctrlKey ? 0.008 : 0.0012);
+    e.preventDefault();
+  }, { passive: false });
+  // сам жест щипка в Safari приходит отдельными событиями
+  canvas.addEventListener('gesturechange', e => {
+    Input.zoomDelta += (e.scale - 1) * 0.6;
+    e.preventDefault();
+  });
+  for (const ev of ['gesturestart', 'gestureend']) canvas.addEventListener(ev, e => e.preventDefault());
 }

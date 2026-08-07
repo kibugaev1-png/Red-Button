@@ -132,26 +132,26 @@ const Bullets = {
 // Двадцать видов заражённых. tier — насколько поздно встречается и насколько
 // страшен: по нему же растёт сложность этажей в небоскрёбе
 const ZTYPES = [
-  { id: 'shambler',  name: 'Бродяга',        tier: 1,  hp: 55,   spd: 0.55, dmg: 6,  scale: 1.00, skin: '#79906f', rag: '#4e4b3f' },
-  { id: 'crawler',   name: 'Ползун',         tier: 2,  hp: 40,   spd: 0.75, dmg: 5,  scale: 0.72, skin: '#8a9c78', rag: '#46443a', low: true },
-  { id: 'dog',       name: 'Заражённый пёс', tier: 3,  hp: 45,   spd: 2.05, dmg: 9,  scale: 0.85, skin: '#7d6a52', rag: '#5a4a38', quad: true },
-  { id: 'runner',    name: 'Бегун',          tier: 4,  hp: 55,   spd: 1.85, dmg: 8,  scale: 0.96, skin: '#93a381', rag: '#3f4438' },
-  { id: 'worker',    name: 'Рабочий',        tier: 5,  hp: 95,   spd: 0.65, dmg: 10, scale: 1.05, skin: '#6f8566', rag: '#7a6a2e', helmet: true },
-  { id: 'bloated',   name: 'Раздутый',       tier: 6,  hp: 130,  spd: 0.42, dmg: 12, scale: 1.22, skin: '#8fa07e', rag: '#4a4a3c', fat: true },
-  { id: 'spitter',   name: 'Плевун',         tier: 7,  hp: 70,   spd: 0.7,  dmg: 7,  scale: 1.00, skin: '#7fa06a', rag: '#3e4c36', spit: true },
-  { id: 'wolf',      name: 'Волк-мутант',    tier: 8,  hp: 85,   spd: 2.35, dmg: 14, scale: 1.00, skin: '#6a6152', rag: '#4a4438', quad: true },
-  { id: 'soldier',   name: 'Солдат',         tier: 9,  hp: 140,  spd: 0.95, dmg: 14, scale: 1.05, skin: '#6c8062', rag: '#4b5540', armor: true, helmet: true },
-  { id: 'burnt',     name: 'Обожжённый',     tier: 10, hp: 110,  spd: 1.15, dmg: 13, scale: 1.00, skin: '#5c534c', rag: '#33302c', burn: true },
-  { id: 'stalker',   name: 'Сталкер',        tier: 11, hp: 120,  spd: 1.55, dmg: 15, scale: 1.02, skin: '#6d8a70', rag: '#43503f', mask: true },
-  { id: 'brute',     name: 'Громила',        tier: 12, hp: 260,  spd: 0.6,  dmg: 22, scale: 1.42, skin: '#758a68', rag: '#4a4738', fat: true },
-  { id: 'hound',     name: 'Гончая пепла',   tier: 13, hp: 130,  spd: 2.6,  dmg: 18, scale: 1.05, skin: '#4f4a45', rag: '#3a3632', quad: true, burn: true },
-  { id: 'medic',     name: 'Санитар',        tier: 14, hp: 170,  spd: 1.05, dmg: 16, scale: 1.05, skin: '#87a184', rag: '#c9c6bb', heals: true },
-  { id: 'trooper',   name: 'Штурмовик',      tier: 15, hp: 220,  spd: 1.2,  dmg: 20, scale: 1.08, skin: '#66795e', rag: '#3f4a3a', armor: true, helmet: true },
-  { id: 'juggernaut',name: 'Тяжёлый',        tier: 16, hp: 420,  spd: 0.55, dmg: 28, scale: 1.55, skin: '#6b7d62', rag: '#4c5340', armor: true, fat: true },
-  { id: 'screamer',  name: 'Крикун',         tier: 17, hp: 200,  spd: 1.35, dmg: 17, scale: 1.10, skin: '#9fb08c', rag: '#3c4636', screams: true },
-  { id: 'gunner',    name: 'Стрелок',        tier: 18, hp: 240,  spd: 1.0,  dmg: 18, scale: 1.08, skin: '#6a7f66', rag: '#454f3c', armor: true, gun: 'pistol' },
-  { id: 'officer',   name: 'Офицер',         tier: 19, hp: 340,  spd: 1.25, dmg: 24, scale: 1.14, skin: '#647a5e', rag: '#3b4636', armor: true, helmet: true, gun: 'rifle' },
-  { id: 'warlord',   name: 'Хозяин высотки', tier: 20, hp: 900,  spd: 1.15, dmg: 34, scale: 1.75, skin: '#5f7358', rag: '#33402f', armor: true, helmet: true, gun: 'mg', boss: true }
+  { id: 'shambler',  name: 'Бродяга',        tier: 1,  hp: 55,   spd: 0.55, dmg: 6,  scale: 0.79, skin: '#79906f', rag: '#4e4b3f' },
+  { id: 'crawler',   name: 'Ползун',         tier: 2,  hp: 40,   spd: 0.75, dmg: 5,  scale: 0.62, skin: '#8a9c78', rag: '#46443a', low: true },
+  { id: 'dog',       name: 'Заражённый пёс', tier: 3,  hp: 45,   spd: 2.05, dmg: 9,  scale: 0.70, skin: '#7d6a52', rag: '#5a4a38', quad: true },
+  { id: 'runner',    name: 'Бегун',          tier: 4,  hp: 55,   spd: 1.85, dmg: 8,  scale: 0.76, skin: '#93a381', rag: '#3f4438' },
+  { id: 'worker',    name: 'Рабочий',        tier: 5,  hp: 95,   spd: 0.65, dmg: 10, scale: 0.82, skin: '#6f8566', rag: '#7a6a2e', helmet: true },
+  { id: 'bloated',   name: 'Раздутый',       tier: 6,  hp: 130,  spd: 0.42, dmg: 12, scale: 0.92, skin: '#8fa07e', rag: '#4a4a3c', fat: true },
+  { id: 'spitter',   name: 'Плевун',         tier: 7,  hp: 70,   spd: 0.7,  dmg: 7,  scale: 0.79, skin: '#7fa06a', rag: '#3e4c36', spit: true },
+  { id: 'wolf',      name: 'Волк-мутант',    tier: 8,  hp: 85,   spd: 2.35, dmg: 14, scale: 0.79, skin: '#6a6152', rag: '#4a4438', quad: true },
+  { id: 'soldier',   name: 'Солдат',         tier: 9,  hp: 140,  spd: 0.95, dmg: 14, scale: 0.82, skin: '#6c8062', rag: '#4b5540', armor: true, helmet: true },
+  { id: 'burnt',     name: 'Обожжённый',     tier: 10, hp: 110,  spd: 1.15, dmg: 13, scale: 0.79, skin: '#5c534c', rag: '#33302c', burn: true },
+  { id: 'stalker',   name: 'Сталкер',        tier: 11, hp: 120,  spd: 1.55, dmg: 15, scale: 0.80, skin: '#6d8a70', rag: '#43503f', mask: true },
+  { id: 'brute',     name: 'Громила',        tier: 12, hp: 260,  spd: 0.6,  dmg: 22, scale: 1.04, skin: '#758a68', rag: '#4a4738', fat: true },
+  { id: 'hound',     name: 'Гончая пепла',   tier: 13, hp: 130,  spd: 2.6,  dmg: 18, scale: 0.82, skin: '#4f4a45', rag: '#3a3632', quad: true, burn: true },
+  { id: 'medic',     name: 'Санитар',        tier: 14, hp: 170,  spd: 1.05, dmg: 16, scale: 0.82, skin: '#87a184', rag: '#c9c6bb', heals: true },
+  { id: 'trooper',   name: 'Штурмовик',      tier: 15, hp: 220,  spd: 1.2,  dmg: 20, scale: 0.84, skin: '#66795e', rag: '#3f4a3a', armor: true, helmet: true },
+  { id: 'juggernaut',name: 'Тяжёлый',        tier: 16, hp: 420,  spd: 0.55, dmg: 28, scale: 1.12, skin: '#6b7d62', rag: '#4c5340', armor: true, fat: true },
+  { id: 'screamer',  name: 'Крикун',         tier: 17, hp: 200,  spd: 1.35, dmg: 17, scale: 0.85, skin: '#9fb08c', rag: '#3c4636', screams: true },
+  { id: 'gunner',    name: 'Стрелок',        tier: 18, hp: 240,  spd: 1.0,  dmg: 18, scale: 0.84, skin: '#6a7f66', rag: '#454f3c', armor: true, gun: 'pistol' },
+  { id: 'officer',   name: 'Офицер',         tier: 19, hp: 340,  spd: 1.25, dmg: 24, scale: 0.87, skin: '#647a5e', rag: '#3b4636', armor: true, helmet: true, gun: 'rifle' },
+  { id: 'warlord',   name: 'Хозяин высотки', tier: 20, hp: 900,  spd: 1.15, dmg: 34, scale: 1.24, skin: '#5f7358', rag: '#33402f', armor: true, helmet: true, gun: 'mg', boss: true }
 ];
 function ztype(i) { return ZTYPES[clamp(i, 0, ZTYPES.length - 1)]; }
 

@@ -280,6 +280,17 @@ const UI = {
       if (Game.ghost && Game.ghost.err) this.text(g, Game.ghost.err, W / 2, py - 26, '#e08a6a', 12, '600', 'center');
     }
 
+    // масштаб: показываем ненадолго, когда крутят колесо или щиплют трекпад
+    if (Game.zoomHint > 0) {
+      const a = clamp(Game.zoomHint, 0, 1);
+      g.globalAlpha = a;
+      const zt = 'масштаб ' + Math.round(Game.zoom * 100 / 2.1) + '%';
+      g.fillStyle = 'rgba(12,13,15,0.8)';
+      g.beginPath(); g.roundRect(W / 2 - 62, 150, 124, 26, 6); g.fill();
+      this.text(g, zt, W / 2, 167, '#e8dfb0', 13, '700', 'center');
+      g.globalAlpha = 1;
+    }
+
     // подсказки клавиш
     this.text(g, 'Ю выбросить · Q применить · I инвентарь · B тело · C крафт · M карта · F навыки · E взять · R перезарядка · Esc пауза', W / 2, H - 4, 'rgba(200,190,160,0.3)', 11, '500', 'center');
   },

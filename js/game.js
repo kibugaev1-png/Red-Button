@@ -118,14 +118,8 @@ const Game = {
     this.cam.y = Player.y - UI.H / (2 * this.zoom);
   },
 
-  // Телепортов больше нет: карта показывает, где что, а дойти надо ногами.
-  // Мгновенные переходы ломали и сложность, и ощущение расстояния
-  travel(zone) {
-    const cx = Math.floor((zone.x0 + zone.x1) / 2);
-    const km = (Math.abs(cx * CELL - Player.x) / CELL / 100).toFixed(1);
-    Player.say(zone.name + ': ' + (cx * CELL > Player.x ? 'на восток' : 'на запад') + ', ' + km + ' км пешком');
-    UI.screen = null;
-  },
+  // Телепортов в игре нет вовсе — до любой локации доходишь ногами.
+  // Функция перехода удалена целиком, чтобы её нельзя было вызвать случайно
 
   sleep() {
     this.time = DAY_LEN * 0.3; this.day++;
@@ -218,7 +212,14 @@ const Game = {
     // Ю (она же точка на английской раскладке) — выбросить всё из руки
     if (!Player.dead && (Input.once('Period') || Input.once('KeyG'))) Player.dropHand();
     for (let i = 0; i < 6; i++) if (Input.once('Digit' + (i + 1))) Player.hotbar = i;
-    if (Input.wheel) Player.hotbar = (Player.hotbar + (Input.wheel > 0 ? 1 : 5)) % 6;
+    // приближение и отдаление: колесо мыши или щипок на трекпаде
+    if (Input.zoomDelta) {
+      this.zoomTarget = clamp((this.zoomTarget || this.zoom) * (1 + Input.zoomDelta), 0.55, 4.2);
+      this.zoomHint = 1.6;
+    }
+    if (this.zoomTarget === undefined) this.zoomTarget = this.zoom;
+    this.zoom += (this.zoomTarget - this.zoom) * Math.min(1, dt * 10);
+    if (this.zoomHint > 0) this.zoomHint -= dt;
 
     if (Player.dead) { UI.screen = 'dead'; }
     const paused = UI.screen !== null;
