@@ -2,10 +2,14 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "pyl",
+      "name": "krasnaya-knopka",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8765"],
-      "port": 8765
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8099"
+      ],
+      "port": 8099
     }
   ]
 }
