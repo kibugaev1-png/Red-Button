@@ -5,11 +5,10 @@
       "name": "krasnaya-knopka",
       "runtimeExecutable": "python3",
       "runtimeArgs": [
-        "-m",
-        "http.server",
-        "8099"
+        "/Users/bugaevkirill/Desktop/game/serve.py",
+        "4986"
       ],
-      "port": 8099
+      "port": 4986
     }
   ]
 }
