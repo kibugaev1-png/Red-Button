@@ -35,6 +35,13 @@ uniform vec4 mat_ore[32];    // rgb — цвет вкраплений руды
 uniform vec4 mat_meta[32];   // r — разброс тона, g — вид, b — блеск, a — рельеф
 uniform vec4 mat_tex[32];    // r — слой текстуры, g — частиц на плитку, b — поворот
 
+// Локации: у каждой свой оттенок породы и свои текстуры. Границы заданы в
+// частицах по X, подмена слоёв — для земли, глины и камня.
+uniform int zone_count = 0;
+uniform vec4 zone_span[8];     // x0, x1 в частицах
+uniform vec4 zone_tint[8];     // оттенок породы
+uniform vec4 zone_layers[8];   // подмена слоёв: земля, глина, камень (-1 — как есть)
+
 uniform vec2 tex_cells;      // размер текстуры сетки в частицах, вместе с полями
 uniform vec2 inner_from;     // где начинается «своя» часть тайла
 uniform vec2 inner_to;
@@ -140,6 +147,14 @@ void fragment() {
 		discard;                                       // поля тайла не наши
 	}
 
+	// в какой локации находится частица
+	int zi = -1;
+	for (int i = 0; i < zone_count; i++) {
+		if (world.x >= zone_span[i].x && world.x <= zone_span[i].y) {
+			zi = i;
+		}
+	}
+
 	float id = mat_at(cell);
 	if (id < 0.5) {
 		// ---- воздух: только травинки над дёрном ----
@@ -168,6 +183,13 @@ void fragment() {
 		float relief = meta.a;
 		float layer = tinfo.r;
 		float per_tile = tinfo.g;                      // частиц на одну плитку
+		// локация может подменить текстуру земли, глины или камня на свою
+		if (zi >= 0) {
+			vec4 zl = zone_layers[zi];
+			if (int(id) == 2 && zl.x >= 0.0) { layer = zl.x; }
+			if (int(id) == 3 && zl.y >= 0.0) { layer = zl.y; }
+			if (int(id) == 4 && zl.z >= 0.0) { layer = zl.z; }
+		}
 		float alpha = base4.a;
 		float kind = meta.g;
 
@@ -206,6 +228,9 @@ void fragment() {
 		// подкраска: одна текстура обслуживает несколько пород (земля и грядка,
 		// камень и постройка), оттенок доводим множителем
 		alb *= base4.rgb;
+		if (zi >= 0) {
+			alb *= zone_tint[zi].rgb;
+		}
 
 		// крупные пятна и вариация тона
 		alb *= 1.0 + (fbm(wp * 0.045) - 0.5) * 0.5 * (0.4 + variance);

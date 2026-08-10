@@ -148,6 +148,10 @@ func _make_tiles() -> void:
 			mat.set_shader_parameter("mat_ore", mats.ore)
 			mat.set_shader_parameter("mat_meta", mats.meta)
 			mat.set_shader_parameter("mat_tex", mats.tex)
+			mat.set_shader_parameter("zone_count", mats.zones.count)
+			mat.set_shader_parameter("zone_span", mats.zones.span)
+			mat.set_shader_parameter("zone_tint", mats.zones.tint)
+			mat.set_shader_parameter("zone_layers", mats.zones.layers)
 			mat.set_shader_parameter("tex_color", _tex_color)
 			mat.set_shader_parameter("tex_normal", _tex_normal)
 			mat.set_shader_parameter("grid", tex)
@@ -262,7 +266,32 @@ func _material_arrays() -> Dictionary:
 			ore.append(Vector4(0, 0, 0, 1))
 			meta.append(Vector4(0, 0, 0, 0))
 			tex.append(Vector4(0, 12, 0, 0))
-	return {"col": col, "ore": ore, "meta": meta, "tex": tex}
+	return {"col": col, "ore": ore, "meta": meta, "tex": tex, "zones": _zone_arrays()}
+
+
+# Локации для шейдера: границы, оттенок породы и подмена текстур.
+# Настройки берутся из scripts/zone_look.gd — там они собраны по локациям.
+func _zone_arrays() -> Dictionary:
+	var span := PackedVector4Array()
+	var tint := PackedVector4Array()
+	var layers := PackedVector4Array()
+	var n := 0
+	for z in Core.ZONES:
+		var look: Dictionary = ZoneLook.of(z.id)
+		var t: Color = look.ground_tint
+		var lay: Dictionary = look.layers
+		span.append(Vector4(float(z.x0), float(z.x1), 0.0, 0.0))
+		tint.append(Vector4(t.r, t.g, t.b, 1.0))
+		layers.append(Vector4(
+			float(_layer_of.get(lay.get("dirt", ""), -1)),
+			float(_layer_of.get(lay.get("clay", ""), -1)),
+			float(_layer_of.get(lay.get("stone", ""), -1)), 0.0))
+		n += 1
+	while span.size() < 8:
+		span.append(Vector4(1.0, -1.0, 0.0, 0.0))
+		tint.append(Vector4(1, 1, 1, 1))
+		layers.append(Vector4(-1, -1, -1, 0))
+	return {"count": n, "span": span, "tint": tint, "layers": layers}
 
 
 # Подкраска текстуры. Фотография сама несёт яркость и контраст, поэтому от цвета

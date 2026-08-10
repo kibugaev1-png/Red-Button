@@ -97,14 +97,14 @@ const MATS := [
 
 # ---- локации ----
 const ZONES := [
-	{"id": "dead", "name": "Мёртвая зона", "x0": 200, "x1": 1000, "amp": 0.9, "build": false},
+	{"id": "dead", "name": "Мёртвая зона", "x0": 200, "x1": 1000, "amp": 1.5, "build": false},
 	{"id": "city", "name": "Мирный город", "x0": 1500, "x1": 2300, "amp": 0.0, "build": false},
-	{"id": "waste", "name": "Пустошь", "x0": 2800, "x1": 3700, "amp": 0.35, "build": true},
-	{"id": "forest", "name": "Лес", "x0": 4200, "x1": 5000, "amp": 0.9, "build": false},
-	{"id": "mine", "name": "Шахта", "x0": 5500, "x1": 6300, "amp": 0.8, "build": true},
-	{"id": "towers", "name": "Руины небоскрёбов", "x0": 6800, "x1": 7700, "amp": 0.9, "build": false},
+	{"id": "waste", "name": "Пустошь", "x0": 2800, "x1": 3700, "amp": 1.1, "build": true},
+	{"id": "forest", "name": "Лес", "x0": 4200, "x1": 5000, "amp": 1.3, "build": false},
+	{"id": "mine", "name": "Шахта", "x0": 5500, "x1": 6300, "amp": 1.8, "build": true},
+	{"id": "towers", "name": "Руины небоскрёбов", "x0": 6800, "x1": 7700, "amp": 1.2, "build": false},
 ]
-const GAP_ZONE := {"id": "gap", "name": "Ничейная земля", "x0": 0, "x1": 0, "amp": 0.9, "build": true}
+const GAP_ZONE := {"id": "gap", "name": "Ничейная земля", "x0": 0, "x1": 0, "amp": 1.2, "build": true}
 
 static func zone_at_cell(cx: int) -> Dictionary:
 	for z in ZONES:

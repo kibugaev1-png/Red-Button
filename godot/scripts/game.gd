@@ -146,7 +146,51 @@ func _make_environment() -> void:
 	add_child(we)
 
 
+# Фоны локаций: полосы фотографических панорам. Порядок совпадает с ZONES,
+# ничейная земля между локациями берёт фон соседа, к которому ближе.
+var _bg := {}
+
+
+func _load_backgrounds() -> void:
+	for zid: String in ZoneLook.LOOK.keys():
+		var name: String = ZoneLook.LOOK[zid].bg
+		if _bg.has(name):
+			continue
+		var path := "res://backgrounds/%s.jpg" % name
+		if ResourceLoader.exists(path):
+			_bg[name] = load(path)
+		else:
+			print("[фон] нет файла ", path)
+
+
+# Какой фон показывать и насколько он смешан с соседним. Возвращает
+# [текстура A, текстура B, доля B]. Смешивание идёт в полосе перед локацией,
+# поэтому местность меняется постепенно, а не щелчком на границе.
+func _bg_for(px: float) -> Array:
+	var cx := px / Core.CELL
+	var best := "waste"
+	var next := "waste"
+	var mix := 0.0
+	# ближайшая локация слева и справа по центрам
+	var prev_id := "waste"
+	var prev_c := -100000.0
+	for z in Core.ZONES:
+		var c: float = (float(z.x0) + float(z.x1)) * 0.5
+		if c <= cx:
+			prev_id = z.id
+			prev_c = c
+		else:
+			# мы между prev_c и c: смешиваем в последней четверти промежутка
+			var t: float = (cx - prev_c) / maxf(1.0, c - prev_c)
+			best = prev_id
+			next = z.id
+			mix = clampf((t - 0.6) / 0.4, 0.0, 1.0)
+			return [_bg.get(best), _bg.get(next), mix]
+	return [_bg.get(prev_id), _bg.get(prev_id), 0.0]
+
+
 func _make_sky() -> void:
+	_load_backgrounds()
 	var layer := CanvasLayer.new()
 	layer.layer = -100
 	var mat := ShaderMaterial.new()
@@ -238,6 +282,18 @@ func _process(dt: float) -> void:
 	# Линию горизонта берём по земле под игроком, а не по среднему уровню мира:
 	# иначе солнце и силуэты города уезжают за землю и небо выглядит заливкой.
 	sm.set_shader_parameter("horizon_y", terrain.surface_px(player.position.x))
+	var bgs := _bg_for(player.position.x)
+	if bgs[0] != null:
+		sm.set_shader_parameter("bg_a", bgs[0])
+		sm.set_shader_parameter("bg_b", bgs[1] if bgs[1] != null else bgs[0])
+		sm.set_shader_parameter("bg_mix", bgs[2])
+	# дымка, яркость и параллакс фона — свои у каждой локации
+	var look: Dictionary = ZoneLook.of(Core.zone_at_px(player.position.x).id)
+	sm.set_shader_parameter("exposure", look.bg_exposure)
+	sm.set_shader_parameter("fog_amount", look.bg_fog)
+	sm.set_shader_parameter("haze", look.bg_haze)
+	sm.set_shader_parameter("parallax", look.bg_parallax)
+	sm.set_shader_parameter("span", look.bg_span)
 	sm.set_shader_parameter("cam_pos", cam.get_screen_center_position())
 	sm.set_shader_parameter("zoom", cam.zoom.x)
 	sm.set_shader_parameter("screen_size", get_viewport_rect().size)
