@@ -47,10 +47,10 @@ static func generate(seed_v: int) -> Dictionary:
 	for x in Core.WW:
 		var z := Core.zone_at_cell(x)
 		var amp: float = z.amp
-		var h := float(Core.SURFACE_Y) + (n1.at(x / 90.0) * 16.0 + n2.at(x / 28.0) * 5.0 + n3.at(x / 9.0) * 1.6) * amp
+		var h := float(Core.SURFACE_Y) + (n1.at(x / 210.0) * 26.0 + n1.at(x / 74.0) * 11.0 + n2.at(x / 23.0) * 4.5 + n3.at(x / 8.0) * 1.5) * amp
 		surface[x] = int(round(h))
 	# сглаживание: на пиле игрок цепляется ногами
-	for _pass in 5:
+	for _pass in 2:
 		var cp := surface.duplicate()
 		for x in range(1, Core.WW - 1):
 			surface[x] = int(round((cp[x - 1] + cp[x] * 2 + cp[x + 1]) / 4.0))
@@ -116,6 +116,7 @@ static func generate(seed_v: int) -> Dictionary:
 						if data[idx] == Core.STONE:
 							data[idx] = int(v.m)
 
+	_scatter_surface(data, surface, rng)
 	_grow_forest(data, surface, rng)
 	_place_ruins(data, surface, 3250)
 	_bake_light(data)
@@ -124,6 +125,53 @@ static func generate(seed_v: int) -> Dictionary:
 	var spawn := Vector2(spawn_x * Core.CELL, (surface[spawn_x] - 1) * Core.CELL)
 	print("[мир] сгенерирован за ", Time.get_ticks_msec() - t0, " мс")
 	return {"data": data, "surface": surface, "spawn": spawn}
+
+
+# Поверхность не должна быть ровной линией: раскидываем валуны, гравийные
+# наносы, обломки бетона и сухие кусты. Именно эта мелочь отличает землю от
+# закрашенной плиты, особенно рядом с фотографическим фоном.
+static func _scatter_surface(data: PackedByteArray, surface: PackedInt32Array, rng: RandomNumberGenerator) -> void:
+	var x := 4
+	while x < Core.WW - 4:
+		x += rng.randi_range(6, 26)
+		var top: int = surface[x]
+		var roll := rng.randf()
+		if roll < 0.3:
+			# валун: несколько частиц камня горкой
+			var r := rng.randi_range(1, 3)
+			for dy in range(-r, 1):
+				for dx in range(-r, r + 1):
+					if dx * dx + dy * dy * 2 <= r * r:
+						_put_if_air(data, x + dx, top - 1 + dy, Core.STONE)
+		elif roll < 0.5:
+			# гравийный нанос — широкий и низкий
+			var w := rng.randi_range(3, 9)
+			for dx in range(-w, w + 1):
+				var hh := int(round(float(w - absi(dx)) * 0.35))
+				for dy in range(0, hh):
+					_put_if_air(data, x + dx, top - 1 - dy, Core.ASH)
+		elif roll < 0.62:
+			# обломок бетонной плиты, лежит косо
+			var l := rng.randi_range(4, 11)
+			var dir := 1 if rng.randf() < 0.5 else -1
+			for i in l:
+				var yy := top - 1 - int(float(i) * 0.4)
+				_put_if_air(data, x + i * dir, yy, Core.CONCRETE)
+				_put_if_air(data, x + i * dir, yy + 1, Core.CONCRETE)
+		elif roll < 0.72:
+			# ржавая арматура торчком
+			var hgt := rng.randi_range(3, 8)
+			for dy in hgt:
+				_put_if_air(data, x, top - 1 - dy, Core.REBAR)
+		elif roll < 0.86:
+			# сухой куст
+			var hgt2 := rng.randi_range(2, 5)
+			for dy in hgt2:
+				_put_if_air(data, x, top - 1 - dy, Core.TRUNK)
+			for dx in range(-2, 3):
+				for dy in range(-2, 1):
+					if rng.randf() < 0.45:
+						_put_if_air(data, x + dx, top - hgt2 + dy, Core.LEAF)
 
 
 # Лес: мёртвые сосны стоят стеной, древесину берут только здесь
