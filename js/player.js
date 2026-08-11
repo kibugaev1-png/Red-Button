@@ -141,7 +141,8 @@ const Player = {
   update(dt) {
     if (this.dead) return;
     const speed = 1.65 * this.legPenalty() * (1 + 0.08 * this.skills.speed);
-    const sprint = Input.isDown('ShiftLeft') && this.legPenalty() > 0.7 ? 1.55 : 1;
+    const sprint = Input.isDown('ShiftLeft') || Input.isDown('ShiftRight')
+      ? 1 + 0.55 * clamp(this.legPenalty(), 0.35, 1) : 1;
     let ax = 0;
     if (Input.isDown('KeyA') || Input.isDown('ArrowLeft')) ax -= 1;
     if (Input.isDown('KeyD') || Input.isDown('ArrowRight')) ax += 1;
@@ -409,11 +410,14 @@ const Player = {
     this.cooldown = it.rof;
     this.swingT = 0.35;
     this.face = Input.wx > this.x ? 1 : -1;
-    const hx = this.x + this.face * 26, hy = this.y - 30;
+    const hx = this.x + this.face * 24, hy = this.y - 30;
     let hitAny = false;
     for (const z of Zombies.list) {
       if (z.hp <= 0) continue;
-      if (dist(hx, hy, z.x, z.y - 24) < 30) {
+      // по горизонтали бьём вперёд с запасом, по высоте прощаем разницу уровней:
+      // иначе зомби на кочке или вплотную к телу оказывался вне зоны удара
+      const zdx = (z.x - hx) * this.face, zdy = (z.y - 24) - hy;
+      if (zdx > -34 && zdx < 40 && Math.abs(zdy) < 34) {
         z.hp -= it.dmg * this.armPenalty();
         z.vx += this.face * 1.6; z.vy = -2.2;
         for (let k = 0; k < 7; k++) Particles.blood(z.x, z.y - 26);
