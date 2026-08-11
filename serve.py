@@ -33,6 +33,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return 'text/html; charset=utf-8'
         if str(path).endswith('.js'):
             return 'application/javascript; charset=utf-8'
+        # без этого типа браузер отказывается запускать веб-сборку Godot
+        if str(path).endswith('.wasm'):
+            return 'application/wasm'
+        if str(path).endswith('.pck'):
+            return 'application/octet-stream'
         return base
 
     def end_headers(self):

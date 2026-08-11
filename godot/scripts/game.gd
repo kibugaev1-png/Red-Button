@@ -53,6 +53,13 @@ func _ready() -> void:
 	add_child(layer)
 	hud.set("game", self)
 
+	# Ограничение разрешения отрисовки. Без него игра рисует в разрешении
+	# ретина-экрана — 2560×1440 вместо 1280×720, вчетверо больше пикселей. На
+	# замере это стоило 39 к/с против 176. Мир из частиц всё равно не выигрывает
+	# от такой плотности, а интерфейс остаётся резким за счёт режима растяжки.
+	_base_size = Vector2i(1280, 720)
+	_set_render_scale(1.0)
+
 	print("[игра] готова, появление: ", player.position)
 	_debug_args()
 
@@ -86,6 +93,7 @@ func _debug_args() -> void:
 
 
 var _day_fixed := -1.0
+var _auto_off := false
 var _test_dig := false
 
 
@@ -307,6 +315,7 @@ func _process(dt: float) -> void:
 	terrain.set_uniform("day", day)
 	terrain.set_uniform("time_s", t)
 
+	_auto_quality(dt)
 	_dig()
 	hud.queue_redraw()
 	_capture()
@@ -378,3 +387,96 @@ var _detail := 1.0
 
 func terrain_detail() -> float:
 	return _detail
+
+
+# АВТОМАТИЧЕСКОЕ КАЧЕСТВО.
+#
+# Порода считается процедурно на видеокарте, и на слабой машине или в браузере
+# это может не уложиться в кадр. Ждать, что игрок сам нажмёт F1, нельзя — он
+# просто решит, что игра лагает. Поэтому следим за кадрами сами: держим среднее
+# по секунде и понижаем детализацию ступенями, а когда становится легче —
+# возвращаем обратно. Возврат делаем с запасом, иначе качество будет дёргаться
+# туда-сюда на границе.
+var _fps_avg := 60.0
+var _quality_hold := 0.0
+var _quality_step := 0        # 0 — полная детализация, 1 — упрощённая, 2 — минимум
+
+
+func _auto_quality(dt: float) -> void:
+	# Прогрев. Первые секунды уходят на генерацию мира и сборку тайлов, и кадры
+	# там низкие не из-за картинки. Без этой паузы качество падало на старте
+	# ни за что и обратно уже не поднималось.
+	if t < 3.0 or _auto_off:
+		return
+	var fps := Engine.get_frames_per_second()
+	if fps <= 0.0:
+		return
+	_fps_avg = lerp(_fps_avg, float(fps), clampf(dt * 1.5, 0.0, 1.0))
+	_quality_hold -= dt
+	if _quality_hold > 0.0:
+		return
+	var step := _quality_step
+	if _fps_avg < 32.0:
+		step = 2
+	elif _fps_avg < 46.0:
+		step = maxi(step, 1)
+	elif _fps_avg > 52.0 and step > 0:
+		step -= 1          # стало легко — отдаём детализацию назад
+	if step == _quality_step:
+		return
+	_quality_step = step
+	_quality_hold = 3.0   # пауза, чтобы качество не дёргалось на границе
+	_apply_quality()
+
+
+func _apply_quality() -> void:
+	match _quality_step:
+		0:
+			_set_render_scale(1.0)
+			terrain.set_uniform("detail", 1.0)
+			terrain.set_uniform("fbm_octaves", 3)
+			_detail = 1.0
+			_set_glow(true)
+		1:
+			_set_render_scale(1.0)
+			# убираем мелкую процедурную деталь: трещины, волокна, зерно
+			terrain.set_uniform("detail", 0.35)
+			terrain.set_uniform("fbm_octaves", 2)
+			_detail = 0.35
+			_set_glow(true)
+		_:
+			terrain.set_uniform("detail", 0.0)
+			terrain.set_uniform("fbm_octaves", 1)
+			_detail = 0.0
+			_set_glow(false)
+			# Самый сильный рычаг: рисовать меньше пикселей. Порода считается на
+			# каждый пиксель экрана, поэтому 960×540 вместо 1280×720 — это в 1,8
+			# раза меньше работы, а растянутая картинка на такой графике почти
+			# не отличается. Математику на пиксель урезать бесполезно: замер
+			# показал, что упираемся в число пикселей.
+			_set_render_scale(0.75)
+	print("[кадры] среднее ", int(_fps_avg), " к/с — детализация ступень ", _quality_step)
+
+
+func _set_glow(on: bool) -> void:
+	var we := get_node_or_null("WorldEnvironment") as WorldEnvironment
+	if we and we.environment:
+		we.environment.glow_enabled = on
+
+
+# Разрешение отрисовки. Окно остаётся тем же, а мир рисуется в меньший буфер и
+# растягивается — интерфейс при этом остаётся резким, потому что режим растяжки
+# canvas_items масштабирует всё вместе.
+var _base_size := Vector2i.ZERO
+
+
+func _set_render_scale(k: float) -> void:
+	var w := get_window()
+	if _base_size == Vector2i.ZERO:
+		_base_size = w.content_scale_size
+		if _base_size == Vector2i.ZERO:
+			_base_size = Vector2i(1280, 720)
+	var want := Vector2i(int(float(_base_size.x) * k), int(float(_base_size.y) * k))
+	if w.content_scale_size != want:
+		w.content_scale_size = want
+		print("[кадры] разрешение отрисовки ", want)

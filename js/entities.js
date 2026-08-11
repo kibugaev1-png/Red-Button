@@ -696,8 +696,14 @@ const City = {
   update(dt) { for (const t of this.traders) t.phase += dt; },
   draw(ctx) {
     if (!this.traders.length) return;
+    // Отсечение по экрану. Раньше вся обстановка города рисовалась с
+    // градиентами каждый кадр, даже когда игрок был в другой локации, — это
+    // съедало шестую часть кадра впустую.
+    const v = Game.view;
+    const vis = v ? (x, m) => x > v.x - m && x < v.x + v.w + m : () => true;
     // ---- обстановка города ----
     for (const p of this.props) {
+      if (!vis(p.x, 80)) continue;
       ctx.save(); ctx.translate(p.x, p.y);
       if (p.kind === 'barrel') {
         const bg = ctx.createLinearGradient(-6, 0, 6, 0);
@@ -728,6 +734,7 @@ const City = {
     }
     // ---- фонари ----
     for (const l of this.lamps) {
+      if (!vis(l.x, 140)) continue;
       l.t += 0.05;
       ctx.strokeStyle = '#4a4d52'; ctx.lineWidth = 2.6;
       ctx.beginPath(); ctx.moveTo(l.x, l.y); ctx.lineTo(l.x, l.y - 46); ctx.lineTo(l.x + 8, l.y - 46); ctx.stroke();
@@ -742,6 +749,7 @@ const City = {
     }
     // Каждый торговец рисуется в своём цвете и со своей вывеской
     for (const t of this.traders) {
+      if (!vis(t.x, 120)) continue;
       const d = t.def;
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       ctx.beginPath(); ctx.ellipse(t.x, t.y, 10, 2.6, 0, 0, 7); ctx.fill();

@@ -22,6 +22,8 @@ render_mode blend_mix, unshaded;
 //
 // Вход — текстура сетки: R это id породы, G это свет от неба.
 
+uniform float detail : hint_range(0.0, 1.0) = 1.0;   // ступень качества: гасит тяжёлые ветки
+
 uniform sampler2D grid : filter_nearest, repeat_disable;
 // та же текстура со сглаживанием: свет от неба надо читать плавно, иначе
 // освещение ступенями по 8 пикселей выдаёт сетку
@@ -53,7 +55,6 @@ uniform vec3 cave_color : source_color = vec3(0.12, 0.13, 0.18);
 uniform vec3 bounce_color : source_color = vec3(0.42, 0.28, 0.18);
 uniform vec3 sun_dir = vec3(-0.46, -0.78, -0.43);   // z вниз: свет идёт в экран
 uniform float day : hint_range(0.0, 1.0) = 1.0;
-uniform float detail : hint_range(0.0, 1.0) = 1.0;
 uniform float time_s = 0.0;
 uniform float exposure = 1.55;
 
@@ -72,10 +73,14 @@ float vnoise(vec2 p) {
 		mix(hash12(i + vec2(0.0, 1.0)), hash12(i + vec2(1.0, 1.0)), f.x), f.y);
 }
 
+// Октавы зависят от detail: раньше detail только умножал уже посчитанное, и
+// понижение качества не давало ни одного кадра выигрыша.
+uniform int fbm_octaves : hint_range(1, 3) = 3;
+
 float fbm(vec2 p) {
 	float v = 0.0;
 	float a = 0.5;
-	for (int i = 0; i < 3; i++) {
+	for (int i = 0; i < fbm_octaves; i++) {
 		v += vnoise(p) * a;
 		p = p * 2.03 + 19.19;
 		a *= 0.5;
@@ -92,6 +97,10 @@ float mat_at(vec2 cell) {
 // размытия под каждым перекрытием получался бы тёмный прямоугольник с резкой
 // вертикальной границей. Пять выборок дают мягкую полутень почти бесплатно.
 float sky_light(vec2 cell_pos) {
+	if (detail <= 0.5) {
+		// экономно: одна выборка вместо пяти, полутень чуть жёстче
+		return clamp(texture(grid_lin, cell_pos / tex_cells).g, 0.0, 1.0);
+	}
 	float l = texture(grid_lin, cell_pos / tex_cells).g * 0.36;
 	l += texture(grid_lin, (cell_pos + vec2(-3.0, -1.0)) / tex_cells).g * 0.16;
 	l += texture(grid_lin, (cell_pos + vec2(3.0, -1.0)) / tex_cells).g * 0.16;
@@ -204,7 +213,7 @@ void fragment() {
 		vec3 dn3 = density(wp);
 		float d = dn3.x;
 		if (kind != 11.0 && kind != 9.0) {
-			float jag = (fbm(wp * 3.1) - 0.5) * 0.14 * micro;
+			float jag = micro > 0.01 ? (fbm(wp * 3.1) - 0.5) * 0.14 * micro : 0.0;
 			alpha *= smoothstep(0.34, 0.56, d + jag);
 		}
 		if (alpha < 0.004) {
@@ -215,15 +224,21 @@ void fragment() {
 		// Две плитки разного масштаба, смешанные крупным шумом: одна и та же
 		// фотография перестаёт читаться повтором на большой площади.
 		vec2 t1 = wp / per_tile;
-		vec2 t2 = wp / (per_tile * 2.7) + 0.37;
-		float blend = smoothstep(0.35, 0.65, fbm(wp * 0.02));
-		vec3 c1 = texture(tex_color, vec3(t1, layer)).rgb;
-		vec3 c2 = texture(tex_color, vec3(t2, layer)).rgb;
-		vec3 alb = mix(c1, c2, blend * 0.55);
-
-		vec3 n1 = texture(tex_normal, vec3(t1, layer)).xyz * 2.0 - 1.0;
-		vec3 n2 = texture(tex_normal, vec3(t2, layer)).xyz * 2.0 - 1.0;
-		vec3 tn = normalize(mix(n1, n2, blend * 0.55));
+		vec3 alb;
+		vec3 tn;
+		if (detail > 0.5) {
+			vec2 t2 = wp / (per_tile * 2.7) + 0.37;
+			float blend = smoothstep(0.35, 0.65, fbm(wp * 0.02)) * 0.55;
+			alb = mix(texture(tex_color, vec3(t1, layer)).rgb,
+				texture(tex_color, vec3(t2, layer)).rgb, blend);
+			vec3 n1 = texture(tex_normal, vec3(t1, layer)).xyz * 2.0 - 1.0;
+			vec3 n2 = texture(tex_normal, vec3(t2, layer)).xyz * 2.0 - 1.0;
+			tn = normalize(mix(n1, n2, blend));
+		} else {
+			// экономная ветка: одна плитка, один разбор нормали
+			alb = texture(tex_color, vec3(t1, layer)).rgb;
+			tn = normalize(texture(tex_normal, vec3(t1, layer)).xyz * 2.0 - 1.0);
+		}
 
 		// подкраска: одна текстура обслуживает несколько пород (земля и грядка,
 		// камень и постройка), оттенок доводим множителем
@@ -234,7 +249,9 @@ void fragment() {
 
 		// крупные пятна и вариация тона
 		alb *= 1.0 + (fbm(wp * 0.045) - 0.5) * 0.5 * (0.4 + variance);
-		alb *= 1.0 + (fbm(wp * 0.3) - 0.5) * 0.35 * (0.4 + variance);
+		if (detail > 0.5) {
+			alb *= 1.0 + (fbm(wp * 0.3) - 0.5) * 0.35 * (0.4 + variance);
+		}
 
 		// ---- деталь по виду породы ----
 		if (kind == 1.0) {
