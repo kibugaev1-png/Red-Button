@@ -1,172 +1,35 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
 <meta charset="utf-8">
-<title>Красная кнопка</title>
+<title>Красная кнопка — сборка 11.08 21:36</title>
 <style>
-  :root {
-    --ground: #0d0e11;
-    --ground-2: #16181d;
-    --dust: #d6cfbb;
-    --ash: #8a8578;
-    --rust: #c0492f;
-    --ember: #e0a05a;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    min-height: 100vh;
-    background:
-      radial-gradient(120% 80% at 50% 0%, #1d2026 0%, var(--ground) 60%, #08090b 100%);
-    color: var(--dust);
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 14px;
-    padding: 18px 16px 26px;
-  }
-  header {
-    display: flex;
-    align-items: baseline;
-    gap: 14px;
-    width: 100%;
-    max-width: 1280px;
-  }
-  h1 {
-    margin: 0;
-    font-size: 15px;
-    font-weight: 800;
-    letter-spacing: 0.34em;
-    text-transform: uppercase;
-    color: var(--dust);
-  }
-  h1 .dot {
-    display: inline-block;
-    width: 9px; height: 9px;
-    margin-right: 10px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 35% 30%, #f07a5c, var(--rust) 60%, #6d1f12);
-    box-shadow: 0 0 12px rgba(192, 73, 47, 0.75);
-    vertical-align: baseline;
-  }
-  .tag {
-    font-size: 12px;
-    letter-spacing: 0.08em;
-    color: var(--ash);
-  }
-  /* штамп сборки: сразу видно, свежая ли версия открылась */
-  .build {
-    margin-left: auto;
-    font-size: 11px;
-    letter-spacing: 0.06em;
-    color: var(--ember);
-    border: 1px solid rgba(224, 160, 90, 0.35);
-    border-radius: 999px;
-    padding: 3px 10px;
-    white-space: nowrap;
-  }
-  .stage {
-    position: relative;
-    width: 100%;
-    max-width: 1280px;
-    aspect-ratio: 16 / 9;
-    border: 1px solid rgba(214, 207, 187, 0.12);
-    border-radius: 8px;
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #0b0c0e;
     overflow: hidden;
-    background: #14161a;
-    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.75);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #cdc6ae;
+  }
+  #wrap {
+    height: 100%; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 40%, #1a1c20 0%, #0a0b0d 100%);
   }
   canvas {
     display: block;
-    width: 100%;
-    height: 100%;
+    image-rendering: auto;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.8);
     cursor: crosshair;
     background: #14161a;
   }
-  /* Заставка нужна не для красоты: пока по странице не кликнули,
-     клавиатура уходит мимо игры */
-  #gate {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 22px;
-    background: radial-gradient(circle at 50% 42%, #23262c 0%, #0b0c0e 78%);
-    cursor: pointer;
-    border: 0;
-    width: 100%;
-    color: inherit;
-    font: inherit;
-  }
-  #gate:focus-visible { outline: 2px solid var(--ember); outline-offset: -4px; }
-  #gate .title {
-    font-size: clamp(28px, 5.2vw, 58px);
-    font-weight: 800;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-  }
-  #gate .sub { font-size: 13px; color: var(--ash); letter-spacing: 0.05em; }
-  .button {
-    width: 92px; height: 92px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 36% 30%, #f2795a, var(--rust) 55%, #631d11 100%);
-    box-shadow:
-      0 10px 26px rgba(0, 0, 0, 0.6),
-      inset 0 -6px 14px rgba(0, 0, 0, 0.45),
-      inset 0 5px 10px rgba(255, 190, 170, 0.35);
-    animation: pulse 2.6s ease-in-out infinite;
-  }
-  @keyframes pulse {
-    0%, 100% { transform: scale(1); box-shadow: 0 10px 26px rgba(0,0,0,.6), 0 0 0 0 rgba(192,73,47,.5), inset 0 -6px 14px rgba(0,0,0,.45), inset 0 5px 10px rgba(255,190,170,.35); }
-    50% { transform: scale(1.03); box-shadow: 0 10px 26px rgba(0,0,0,.6), 0 0 0 18px rgba(192,73,47,0), inset 0 -6px 14px rgba(0,0,0,.45), inset 0 5px 10px rgba(255,190,170,.35); }
-  }
-  @media (prefers-reduced-motion: reduce) { .button { animation: none; } }
-  .legend {
-    width: 100%;
-    max-width: 1280px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 18px;
-    font-size: 12px;
-    color: var(--ash);
-  }
-  .legend b { color: var(--dust); font-weight: 700; }
-  .legend span { white-space: nowrap; }
 </style>
-
-<header>
-  <h1><span class="dot"></span>Красная кнопка</h1>
-  <span class="tag">выживание после того, как её нажали</span>
-  <span class="build">сборка 09.08 21:51</span>
-</header>
-
-<div class="stage">
-  <canvas id="game"></canvas>
-  <button id="gate" type="button">
-    <span class="title">Красная кнопка</span>
-    <span class="button"></span>
-    <span class="sub">нажми, чтобы играть — управление с клавиатуры</span>
-  </button>
-</div>
-
-<div class="legend">
-  <span><b>WASD</b> идти и лазать</span>
-  <span><b>ЛКМ</b> копать и стрелять</span>
-  <span><b>ПКМ / Q</b> применить</span>
-  <span><b>E</b> взять, открыть</span>
-  <span><b>Ю</b> выбросить</span>
-  <span><b>I</b> инвентарь</span>
-  <span><b>C</b> крафт</span>
-  <span><b>M</b> карта</span>
-  <span><b>F</b> навыки</span>
-  <span><b>B</b> тело</span>
-  <span><b>R</b> перезарядка</span>
-</div>
-
+</head>
+<body>
+<div id="wrap"><canvas id="game"></canvas></div>
 <script>
-'use strict';
-/* ===== core.js ===== */
+// ---- js/core.js ----
 // core.js — утилиты, генератор шума, ввод
+'use strict';
 
 const CELL = 8;               // размер частицы породы в мировых пикселях
 const WW = 8000;              // ширина мира в частицах (~64 000 px)
@@ -346,8 +209,11 @@ function bindInput(canvas) {
   for (const ev of ['gesturestart', 'gestureend']) canvas.addEventListener(ev, e => e.preventDefault());
 }
 
-/* ===== world.js ===== */
+</script>
+<script>
+// ---- js/world.js ----
 // world.js — порода, генерация мира, копание, отрисовка
+'use strict';
 
 const M = {
   AIR: 0, GRASS: 1, DIRT: 2, CLAY: 3, STONE: 4, COAL: 5, IRON: 6, COPPER: 7,
@@ -1385,8 +1251,11 @@ const World = {
   }
 };
 
-/* ===== human.js ===== */
+</script>
+<script>
+// ---- js/human.js ----
 // human.js — процедурная отрисовка человека: белая майка, тёмные штаны, армейские ботинки
+'use strict';
 
 const SKINS = ['#e0b48c', '#c99873', '#a97a54', '#7d5638', '#5a3d28'];
 const HAIRS = ['#2b2320', '#4a3526', '#7a6242', '#c9b183', '#8e8e8e'];
@@ -1852,8 +1721,11 @@ function zHealthBar(ctx, px, py, z, sc) {
   }
 }
 
-/* ===== items.js ===== */
+</script>
+<script>
+// ---- js/items.js ----
 // items.js — предметы, иконки, инвентарь на 30 ячеек, рецепты
+'use strict';
 
 // иконки рисуются в квадрате size x size
 const ICON = {
@@ -2300,8 +2172,11 @@ class Inventory {
   isFull() { return this.slots.every(s => s !== null); }
 }
 
-/* ===== player.js ===== */
+</script>
+<script>
+// ---- js/player.js ----
 // player.js — физика, шкалы, тело и травмы, радиация, действия
+'use strict';
 
 const LIMBS = [
   { id: 'head', name: 'Голова' },
@@ -2994,8 +2869,11 @@ const Player = {
   }
 };
 
-/* ===== entities.js ===== */
+</script>
+<script>
+// ---- js/entities.js ----
 // entities.js — частицы, пули, зомби, машины, лут на земле
+'use strict';
 
 const Particles = {
   list: [],
@@ -4178,11 +4056,14 @@ const Machines = {
   }
 };
 
-/* ===== build.js ===== */
+</script>
+  <script>
+// ---- js/build.js ----
 // build.js — строительство в духе Rust: строительный план, сетка, детали,
 // тиры материалов (дерево → камень → металл), молоток для апгрейда и ремонта.
 // Детали живут как объекты с прочностью, а в породу пишется только материал
 // для столкновений — так дешевле и красивее, чем текстурить каждую частицу.
+'use strict';
 
 // Модуль сетки. 8 частиц = 64 px: человек ростом 54 px проходит в проём свободно.
 // На 6 частицах (48 px) дверь была ниже игрока — в неё нельзя было влезть
@@ -4717,9 +4598,12 @@ const Nodes = {
   }
 };
 
-/* ===== boom.js ===== */
+</script>
+<script>
+// ---- js/boom.js ----
 // boom.js — взрывчатка: гранаты и C4. Летят по дуге, взрываются по таймеру,
 // выжигают кратер в породе, рвут зомби и постройки. Всё крафтится, не премиум.
+'use strict';
 
 const Explosions = {
   list: [],
@@ -4923,8 +4807,11 @@ const Throwables = {
   }
 };
 
-/* ===== ui.js ===== */
+</script>
+<script>
+// ---- js/ui.js ----
 // ui.js — меню, кастомизация, HUD, инвентарь, тело, крафт
+'use strict';
 
 const UI = {
   screen: 'menu',        // menu | custom | null | inv | craft | body | options | dead | intro
@@ -5708,8 +5595,11 @@ const UI = {
   }
 };
 
-/* ===== game.js ===== */
+</script>
+<script>
+// ---- js/game.js ----
 // game.js — цикл, камера, фон, свет, взаимодействие
+'use strict';
 
 const Game = {
   canvas: null, ctx: null, lightCanvas: null, lctx: null,
@@ -6350,29 +6240,13 @@ const Game = {
   }
 };
 
-addEventListener('load', () => Game.init());
+// Запуск. Просто слушать 'load' нельзя: если браузер восстановил страницу из
+// кэша или предзагрузил её, событие успевает пройти до того, как этот файл
+// подключился, — и игра не стартует, оставляя чёрный экран. Поэтому сначала
+// проверяем, не загружено ли всё уже.
+if (document.readyState === 'complete') Game.init();
+else addEventListener('load', () => Game.init(), { once: true });
 
 </script>
-<script>
-  // Игра слушает клавиатуру у окна. Внутри страницы фокус надо забрать явно,
-  // иначе первые нажатия улетают мимо
-  (function () {
-    var gate = document.getElementById('gate');
-    var canvas = document.getElementById('game');
-    function enter() {
-      gate.remove();
-      window.focus();
-      canvas.setAttribute('tabindex', '0');
-      canvas.focus();
-    }
-    gate.addEventListener('click', enter);
-    canvas.addEventListener('mousedown', function () { window.focus(); });
-    // стрелки и пробел не должны прокручивать страницу под игрой
-    addEventListener('keydown', function (e) {
-      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].indexOf(e.code) >= 0) {
-        e.preventDefault();
-      }
-    }, { passive: false });
-    if (document.readyState === 'complete' && window.Game && !Game.ctx) Game.init();
-  })();
-</script>
+</body>
+</html>
