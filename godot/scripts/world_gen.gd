@@ -174,28 +174,97 @@ static func _scatter_surface(data: PackedByteArray, surface: PackedInt32Array, r
 						_put_if_air(data, x + dx, top - hgt2 + dy, Core.LEAF)
 
 
-# Лес: мёртвые сосны стоят стеной, древесину берут только здесь
+# ЛЕС.
+#
+# Раньше здесь стояли одиночные стволы с редкими кронами — потому и выглядело
+# палками, торчащими из земли. Настоящий лес читается не отдельными деревьями,
+# а сплошной массой: кроны перекрываются и смыкаются в полог, стволы стоят
+# плотно и на разной глубине, между ними подлесок, а сквозь полог пробиваются
+# отдельные просветы. Поэтому:
+#   - деревья через каждые 3-7 частиц, а не через 9-18;
+#   - три яруса по высоте, чтобы полог был толстым, а не плоской строчкой;
+#   - кроны широкие и сросшиеся, ствол 2-3 частицы с расширением у корня;
+#   - подлесок и кусты по всей земле.
 static func _grow_forest(data: PackedByteArray, surface: PackedInt32Array, rng: RandomNumberGenerator) -> void:
 	for z in Core.ZONES:
 		if z.id != "forest":
 			continue
-		var x: int = int(z.x0) + 6
-		while x < int(z.x1) - 6:
-			x += rng.randi_range(9, 18)
+		var x0: int = int(z.x0)
+		var x1: int = int(z.x1)
+
+		# ---- подлесок по всей земле: кусты, поросль, валежник ----
+		var ux := x0
+		while ux < x1:
+			ux += rng.randi_range(1, 3)
+			var utop: int = surface[ux]
+			var uh := rng.randi_range(1, 4)
+			for dy in uh:
+				_put_if_air(data, ux, utop - 1 - dy, Core.TRUNK)
+			for dx in range(-2, 3):
+				for dy in range(-3, 1):
+					if rng.randf() < 0.5:
+						_put_if_air(data, ux + dx, utop - uh + dy, Core.LEAF)
+
+		# ---- деревья: три яруса, кроны смыкаются в полог ----
+		var x := x0 + 4
+		while x < x1 - 4:
+			x += rng.randi_range(3, 7)
 			var top: int = surface[x]
-			var hgt := rng.randi_range(26, 58)
-			for y in range(top - hgt, top):
-				_put(data, x, y, Core.TRUNK)
-				if rng.randf() < 0.35:
-					_put(data, x + (1 if rng.randf() < 0.5 else -1), y, Core.TRUNK)
-			# сухие ветки и остатки кроны
+			# ярус решает высоту: подрост, средние, вышедшие в первый ярус
+			var tier := rng.randf()
+			var hgt: int
+			if tier < 0.32:
+				hgt = rng.randi_range(18, 30)
+			elif tier < 0.78:
+				hgt = rng.randi_range(34, 52)
+			else:
+				hgt = rng.randi_range(56, 78)
+			var half := 1 if hgt < 34 else (1 if rng.randf() < 0.5 else 2)
+
+			# ствол: к корню расширяется, выше сужается и слегка ведёт в сторону
+			var lean := (rng.randf() - 0.5) * 0.06
+			for y in range(top - hgt, top + 1):
+				var up_frac := float(top - y) / float(hgt)
+				var w := half
+				if up_frac < 0.12:
+					w = half + 1            # комель
+				elif up_frac > 0.8:
+					w = maxi(0, half - 1)   # вершина
+				var sx := x + int(round(lean * float(top - y)))
+				for dx in range(-w, w + 1):
+					_put(data, sx + dx, y, Core.TRUNK)
+
+			# сучья: от них полог выглядит связанным, а не набором шаров
+			var branches := rng.randi_range(3, 7)
+			for _b in branches:
+				var by := top - rng.randi_range(int(float(hgt) * 0.45), hgt - 2)
+				var dir := 1 if rng.randf() < 0.5 else -1
+				var blen := rng.randi_range(4, 11)
+				for i in blen:
+					var bx := x + dir * i
+					var byy := by - int(float(i) * rng.randf_range(0.15, 0.5))
+					_put_if_air(data, bx, byy, Core.TRUNK)
+					# листва вокруг сука
+					for dx in range(-2, 3):
+						for dy in range(-2, 3):
+							if rng.randf() < 0.55:
+								_put_if_air(data, bx + dx, byy + dy, Core.LEAF)
+
+			# крона: широкая, вытянутая, с рваным краем и просветами
 			var cy := top - hgt
-			var rad := rng.randi_range(5, 9)
-			for dy in range(-rad, rad + 1):
-				for dx in range(-rad, rad + 1):
-					var d := sqrt(float(dx * dx) + float(dy * dy) * 1.7)
-					if d < float(rad) * (0.7 + rng.randf() * 0.4):
+			var rx := rng.randi_range(7, 14)
+			var ry := rng.randi_range(6, 11)
+			for dy in range(-ry, ry + 2):
+				for dx in range(-rx, rx + 1):
+					var d := sqrt(pow(float(dx) / float(rx), 2.0) + pow(float(dy) / float(ry), 2.0))
+					# край рвём шумом, внутри оставляем редкие окна
+					if d < 0.72 + rng.randf() * 0.42 and rng.randf() > 0.06:
 						_put_if_air(data, x + dx, cy + dy, Core.LEAF)
+			# нижняя бахрома кроны, чтобы полог не обрывался ровной линией
+			for dx in range(-rx, rx + 1):
+				var fringe := rng.randi_range(0, 4)
+				for dy in fringe:
+					_put_if_air(data, x + dx, cy + ry + dy, Core.LEAF)
 
 
 # Руины дома, в которых мужик просыпается: часть стен стоит, крыша обвалилась
@@ -254,14 +323,14 @@ static func _bake_light(data: PackedByteArray) -> void:
 		var l := 1.0
 		var i := x * 2 + 1
 		for _y in Core.WH:
-			data[i] = int(clamp(l, 0.0, 1.0) * 255.0)
+			data[i] = int(clamp(maxf(l, 0.14), 0.0, 1.0) * 255.0)
 			var m := data[i - 1]
 			if m == Core.AIR:
 				l *= 0.9985
 			elif m == Core.LEAF:
-				l *= 0.93
+				l *= 0.985
 			elif m == Core.WATER:
-				l *= 0.96
+				l *= 0.972
 			elif m == Core.GLASSW:
 				l *= 0.97
 			elif Core.is_solid(m):
@@ -276,14 +345,14 @@ static func relight_column(data: PackedByteArray, x: int) -> void:
 	var l := 1.0
 	var i := x * 2 + 1
 	for _y in Core.WH:
-		data[i] = int(clamp(l, 0.0, 1.0) * 255.0)
+		data[i] = int(clamp(maxf(l, 0.14), 0.0, 1.0) * 255.0)
 		var m := data[i - 1]
 		if m == Core.AIR:
 			l *= 0.9985
 		elif m == Core.LEAF:
-			l *= 0.93
+			l *= 0.985
 		elif m == Core.WATER:
-			l *= 0.96
+			l *= 0.972
 		elif m == Core.GLASSW:
 			l *= 0.97
 		elif Core.is_solid(m):
