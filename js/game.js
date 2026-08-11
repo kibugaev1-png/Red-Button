@@ -534,6 +534,9 @@ const Game = {
     g.scale(this.zoom, this.zoom);
     g.translate(-this.cam.x, -this.cam.y);
     const view = { x: this.cam.x, y: this.cam.y, w: UI.W / this.zoom, h: UI.H / this.zoom };
+    // тот же прямоугольник доступен всем системам: по нему они отсекают то,
+    // что за экраном, и не тратят кадр на невидимое
+    this.view = view;
 
     World.draw(g, view);
     City.draw(g);

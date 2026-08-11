@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/dirt_color.jpg-c3f6b5be45ba19e0c0ee09d28d70fc
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.82
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1

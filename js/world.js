@@ -50,6 +50,11 @@ const World = {
   cells: new Uint8Array(WW * WH),
   surface: new Int16Array(WW),
   chunks: new Map(),
+  chunkUse: new Map(),
+  canvasPool: [],           // переиспользуемые холсты чанков      // ключ -> номер кадра, когда чанк последний раз рисовали
+  frameId: 0,
+  builtThisFrame: 0,
+  buildBudget: 4,
   spawnX: 0, spawnY: 0,
 
   idx(x, y) { return y * WW + x; },
@@ -84,6 +89,8 @@ const World = {
     if (v === SS) return;
     SS = v;
     this.chunks.clear();
+    this.chunkUse.clear();
+    this.canvasPool.length = 0;
   },
 
   // ---- генерация ----
@@ -563,12 +570,35 @@ const World = {
   // угол скругляется — массив выглядит породой, а не сеткой кубов
   chunkCanvas(cx, cy) {
     const key = cx + ',' + cy;
+    this.chunkUse.set(key, this.frameId);
     let c = this.chunks.get(key);
-    if (c) return c;
-    c = document.createElement('canvas');
+    if (c) {
+      // освежаем в порядке вытеснения: заново вставленный ключ становится новым
+      this.chunks.delete(key);
+      this.chunks.set(key, c);
+      return c;
+    }
+    // За один кадр собираем ограниченное число чанков. Остальные дорисуются в
+    // следующих кадрах — так копание кайлом 9×9 и выход в новую область больше
+    // не роняют кадр целиком.
+    if (this.builtThisFrame >= this.buildBudget) return null;
+    this.builtThisFrame++;
     const S = CELL * SS;
-    c.width = CHUNK * S; c.height = CHUNK * S;
-    const g = c.getContext('2d');
+    const side = CHUNK * S;
+    // Берём холст из пула. Каждый холст чанка это 288×288 пикселей, почти
+    // треть мегабайта; создавать их заново каждый кадр — гарантированные
+    // рывки от сборщика мусора. Поэтому выброшенные холсты не теряем, а
+    // возвращаем сюда и переиспользуем.
+    let g;
+    c = this.canvasPool.pop();
+    if (c && c.width === side) {
+      g = c.getContext('2d');
+      g.clearRect(0, 0, side, side);
+    } else {
+      c = document.createElement('canvas');
+      c.width = side; c.height = side;
+      g = c.getContext('2d');
+    }
     const bx = cx * CHUNK, by = cy * CHUNK;
     const tex = this.tex;
 
@@ -840,9 +870,30 @@ const World = {
         }
       }
     }
-    if (this.chunks.size > 260) this.chunks.clear();
     this.chunks.set(key, c);
+    this.evictChunks();
     return c;
+  },
+
+  // Кэш чанков. Раньше при переполнении он стирался ЦЕЛИКОМ — и следующий кадр
+  // пересобирал все видимые чанки заново, по 2,3 мс каждый. Отсюда и были рывки
+  // на десятки миллисекунд каждые несколько экранов пути.
+  // Теперь выбрасываем только самые давно не нужные, и никогда — те, что
+  // понадобились в этом кадре. Map хранит порядок вставки, поэтому первый ключ
+  // и есть самый старый.
+  chunkLimit() { return SS >= 3 ? 300 : SS === 2 ? 620 : 1200; },
+
+  evictChunks() {
+    const limit = this.chunkLimit();
+    if (this.chunks.size <= limit) return;
+    for (const key of this.chunks.keys()) {
+      if (this.chunks.size <= limit) break;
+      if (this.chunkUse.get(key) === this.frameId) continue;  // нужен сейчас
+      const dead = this.chunks.get(key);
+      this.chunks.delete(key);
+      this.chunkUse.delete(key);
+      if (dead && this.canvasPool.length < 40) this.canvasPool.push(dead);
+    }
   },
 
   // деревянная постройка ставится деталями 2×2 частицы, поэтому рисунок
@@ -963,13 +1014,35 @@ const World = {
     const CS = CHUNK * CELL;
     const c0 = Math.floor(view.x / CS), c1 = Math.floor((view.x + view.w) / CS);
     const r0 = Math.floor(view.y / CS), r1 = Math.floor((view.y + view.h) / CS);
+    this.frameId++;
+    this.builtThisFrame = 0;
+    // На холодном кэше (запуск, смена качества) собираем щедро — это разовая
+    // плата. В обычной игре держим низкий предел, чтобы кадр не проваливался.
+    this.buildBudget = this.chunks.size < 60 ? 60 : 4;
     for (let cy = r0; cy <= r1; cy++) {
       for (let cx = c0; cx <= c1; cx++) {
         if (cx < 0 || cy < 0 || cx * CHUNK >= WW || cy * CHUNK >= WH) continue;
-        ctx.drawImage(this.chunkCanvas(cx, cy), 0, 0, CHUNK * CELL * SS, CHUNK * CELL * SS,
-          cx * CS, cy * CS, CS, CS);
+        const c = this.chunkCanvas(cx, cy);
+        if (c) {
+          ctx.drawImage(c, 0, 0, CHUNK * CELL * SS, CHUNK * CELL * SS, cx * CS, cy * CS, CS, CS);
+        } else {
+          this.drawChunkStub(ctx, cx, cy, CS);
+        }
       }
     }
+  },
+
+  // Заглушка на кадр-два, пока чанк не собран: заливка цветом породы из его
+  // середины. Один fillRect вместо двух тысяч операций — незаметно в движении
+  // и несравнимо дешевле пропуска, после которого остаются дыры.
+  drawChunkStub(ctx, cx, cy, CS) {
+    const m = this.get(cx * CHUNK + (CHUNK >> 1), cy * CHUNK + (CHUNK >> 1));
+    if (m === M.AIR) return;
+    const info = MATS[m];
+    if (!info) return;
+    const c = info.c;
+    ctx.fillStyle = 'rgb(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ')';
+    ctx.fillRect(cx * CS, cy * CS, CS, CS);
   },
 
   // копание: круглая кисть или квадрат (кирка выгрызает сразу 9×9 частиц)
