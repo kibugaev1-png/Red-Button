@@ -66,9 +66,18 @@ func _migrate_v1(state: Dictionary) -> Dictionary:
 
 func _default_gameplay_state() -> Dictionary:
 	return {
-		"inventory": {"selected": 0, "slots": []},
+		"legacy_migration": true,
+		"inventory": _empty_inventory_state(),
 		"entities": {"world_items": [], "crates": [], "enemies": []},
 	}
+
+
+func _empty_inventory_state() -> Dictionary:
+	var slots: Array[Dictionary] = []
+	slots.resize(PlayerInventory.SLOT_COUNT)
+	for index in PlayerInventory.SLOT_COUNT:
+		slots[index] = {}
+	return {"version": PlayerInventory.SAVE_VERSION, "selected_hotbar": 0, "slots": slots}
 
 
 func capture_game(game: Node) -> Dictionary:
@@ -110,12 +119,14 @@ func load_game(game: Node) -> bool:
 	player.set("rad", maxf(0.0, float(p.get("rad", 0.0))))
 	player.set("mask", bool(p.get("mask", false)))
 	player.set("filter_wear", clampf(float(p.get("filter_wear", 100.0)), 0.0, 100.0))
+	player.set("_death_emitted", float(player.get("hp")) <= 0.0)
 	var world: Dictionary = state.world
 	game.set("day", clampf(float(world.get("day", 0.8)), 0.0, 1.0))
 	game.set("t", maxf(0.0, float(world.get("time", 0.0))))
 	game.set("zoom_target", clampf(float(world.get("zoom", 1.6)), 0.5, 6.0))
 	var changes: Variant = world.get("terrain_changes", [])
 	if changes is Array and game.get("terrain") != null:
+		game.get("terrain").call("reset_changes")
 		game.get("terrain").call("apply_changes", changes)
 	if game.has_method("apply_gameplay_state"):
 		game.call("apply_gameplay_state", state.gameplay)

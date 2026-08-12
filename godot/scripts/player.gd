@@ -80,6 +80,9 @@ func reset_survivor() -> void:
 
 
 func _physics_process(dt: float) -> void:
+	if hp <= 0.0:
+		vx = 0.0
+		return
 	var ax := 0.0
 	if Input.is_action_pressed(&"left"):
 		ax -= 1.0
@@ -176,7 +179,7 @@ func _move_y(dy: float) -> void:
 		if fall_start >= 0.0:
 			var fall := (position.y - fall_start) / Core.CELL
 			if fall > 13.0:
-				hp -= (fall - 10.0) * 1.5
+				take_damage((fall - 10.0) * 1.5)
 			fall_start = -1.0
 		on_ground = true
 	vy = 0.0
@@ -201,6 +204,7 @@ func _unstuck() -> void:
 
 
 func _needs(dt: float) -> void:
+	var before_hp := hp
 	var sprinting: float = 1.5 if Input.is_action_pressed(&"sprint") and abs(vx) > 0.1 else 1.0
 	food -= dt * (1.0 / 15.0) * sprinting
 	water -= dt * (1.0 / 13.0) * sprinting
@@ -209,16 +213,24 @@ func _needs(dt: float) -> void:
 	if not mask:
 		rad += dt * 4.0
 	else:
-		rad = maxf(0.0, rad - dt * 0.5)
+		if filter_wear > 0.0:
+			filter_wear = maxf(0.0, filter_wear - dt * 0.22)
+			rad = maxf(0.0, rad - dt * 0.5)
+		else:
+			rad += dt * 1.1
+	var environmental_damage := 0.0
 	if rad > 30.0:
-		hp -= dt * (rad - 30.0) * 0.02
+		environmental_damage += dt * (rad - 30.0) * 0.02
 	if food <= 0.0:
-		hp -= dt * 1.2
+		environmental_damage += dt * 1.2
 	if water <= 0.0:
-		hp -= dt * 1.8
+		environmental_damage += dt * 1.8
+	if environmental_damage > 0.0:
+		take_damage(environmental_damage)
 	if food > 120.0 and water > 120.0 and rad < 15.0:
-		hp += dt * 0.8
-	hp = clampf(hp, 0.0, 100.0)
+		heal(dt * 0.8)
+	if not is_equal_approx(before_hp, hp):
+		queue_redraw()
 
 
 # ---- отрисовка ----

@@ -104,6 +104,29 @@ func get_selected() -> Dictionary:
 	return get_slot(_selected_hotbar)
 
 
+func remove_from_slot(index: int, quantity: int = 1) -> bool:
+	if index < 0 or index >= SLOT_COUNT or quantity <= 0:
+		return false
+	var slot: Dictionary = _slots[index]
+	var current := int(slot.get("quantity", 0))
+	if current < quantity:
+		return false
+	current -= quantity
+	if current <= 0:
+		_slots[index] = {}
+	else:
+		slot["quantity"] = current
+	return true
+
+
+func clear() -> void:
+	_slots.clear()
+	_slots.resize(SLOT_COUNT)
+	for index in SLOT_COUNT:
+		_slots[index] = {}
+	_selected_hotbar = 0
+
+
 func serialize_state() -> Dictionary:
 	var serialized_slots: Array[Dictionary] = []
 	for slot: Dictionary in _slots:

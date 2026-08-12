@@ -19,6 +19,13 @@ var transition_manager: TransitionManager
 var dialog_manager: DialogManager
 var main_menu: MainMenu
 var beacon: InteractionBeacon
+var inventory: PlayerInventory
+var item_catalog: ItemCatalog
+var inventory_ui: InventoryUI
+var interaction_coordinator: InteractionCoordinator
+var gameplay_entities: Node2D
+var enemies: Node2D
+var starter_enemy: Enemy
 var day := 1.0
 var zoom_target := 1.6
 var t := 0.0
@@ -26,6 +33,10 @@ var gameplay_active: bool = false
 var _camera_ahead := Vector2.ZERO
 var _last_zone_id: String = ""
 var _autosave_elapsed: float = 0.0
+var _pistol_magazine: int = 0
+var _combat_cooldown: float = 0.0
+var _enemy_defeated: bool = false
+var _drop_serial: int = 0
 
 
 func _ready() -> void:
@@ -45,6 +56,7 @@ func _ready() -> void:
 	player.setup(terrain, terrain.spawn - Vector2(0, 4))
 	player.z_index = 10
 	_make_beacon()
+	_make_gameplay_systems()
 
 	_make_lamp()
 	_make_dust()
@@ -64,7 +76,6 @@ func _ready() -> void:
 	layer.add_child(hud)
 	add_child(layer)
 	hud.set("game", self)
-	beacon.proximity_changed.connect(_on_beacon_proximity)
 	beacon.interacted.connect(_on_beacon_interacted)
 	dialog_manager.dialogue_finished.connect(_on_dialogue_finished)
 
@@ -115,9 +126,404 @@ func _make_beacon() -> void:
 	add_child(beacon)
 
 
+func _make_gameplay_systems() -> void:
+	item_catalog = ItemCatalog.new()
+	inventory = PlayerInventory.new()
+	interaction_coordinator = InteractionCoordinator.new()
+	interaction_coordinator.name = "InteractionCoordinator"
+	add_child(interaction_coordinator)
+	interaction_coordinator.set_actor(player)
+	interaction_coordinator.target_changed.connect(_on_interaction_target_changed)
+	interaction_coordinator.register_adapter(
+		beacon, "E  СЛУШАТЬ СИГНАЛ", 1, 95.0,
+		func(_actor: Node2D) -> bool: return beacon.is_nearby(),
+		func(_actor: Node2D) -> void: beacon.interact()
+	)
+
+	gameplay_entities = Node2D.new()
+	gameplay_entities.name = "GameplayEntities"
+	add_child(gameplay_entities)
+	enemies = Node2D.new()
+	enemies.name = "Enemies"
+	add_child(enemies)
+
+	var ui_layer := CanvasLayer.new()
+	ui_layer.name = "InventoryLayer"
+	ui_layer.layer = 25
+	inventory_ui = InventoryUI.new()
+	ui_layer.add_child(inventory_ui)
+	add_child(ui_layer)
+	inventory_ui.set_inventory(inventory)
+	inventory_ui.set_catalog(item_catalog)
+	inventory_ui.slot_selected.connect(func(_index: int) -> void: hud.queue_redraw())
+	player.died.connect(_on_player_died)
+	reset_gameplay_state()
+
+
+func get_start_gameplay_spec() -> Dictionary:
+	return {
+		"world_items": [
+			{"stable_id": "starter.gasmask", "item_id": "gasmask", "count": 1, "offset_cells": 3},
+		],
+		"crates": [
+			{
+				"stable_id": "starter.tools", "display_name": "ящик с инструментами", "offset_cells": -7,
+				"loot": [
+					{"item_id": "axe", "count": 1},
+					{"item_id": "pick", "count": 1},
+					{"item_id": "bandage", "count": 3},
+				],
+			},
+			{
+				"stable_id": "starter.survival", "display_name": "ящик выжившего", "offset_cells": 9,
+				"loot": [
+					{"item_id": "pistol", "count": 1},
+					{"item_id": "ammo9", "count": 10},
+					{"item_id": "filter", "count": 2},
+					{"item_id": "canteen", "count": 1},
+					{"item_id": "can", "count": 1},
+				],
+			},
+		],
+	}
+
+
+func reset_gameplay_state() -> void:
+	if inventory == null or gameplay_entities == null or enemies == null:
+		return
+	inventory.clear()
+	_pistol_magazine = 0
+	_enemy_defeated = false
+	_clear_gameplay_nodes()
+	_spawn_default_gameplay()
+	if inventory_ui:
+		inventory_ui.set_open(false)
+
+
+func _clear_gameplay_nodes() -> void:
+	for child in gameplay_entities.get_children():
+		interaction_coordinator.unregister_interactable(child as Node2D)
+		child.free()
+	for child in enemies.get_children():
+		child.free()
+	starter_enemy = null
+
+
+func _spawn_default_gameplay() -> void:
+	var spec := get_start_gameplay_spec()
+	for entry: Dictionary in spec.world_items:
+		_spawn_world_item(entry)
+	for entry: Dictionary in spec.crates:
+		_spawn_loot_crate(entry)
+	_spawn_starter_enemy()
+
+
+func _ground_at_offset(offset_cells: int) -> Vector2:
+	var x := terrain.spawn.x + float(offset_cells * Core.CELL)
+	return Vector2(x, terrain.surface_px(x))
+
+
+func _spawn_world_item(entry: Dictionary, saved: Dictionary = {}) -> WorldItem:
+	var item := WorldItem.new()
+	item.stable_id = String(entry.get("stable_id", "item.%d" % gameplay_entities.get_child_count()))
+	item.item_id = String(entry.get("item_id", ""))
+	item.interaction_priority = 10
+	var definition := item_catalog.get_item(StringName(item.item_id))
+	item.display_name = String(definition.get("name", item.item_id))
+	item.count = maxi(1, int(entry.get("count", 1)))
+	if entry.has("position"):
+		var pos: Dictionary = entry.position
+		item.position = Vector2(float(pos.get("x", terrain.spawn.x)), float(pos.get("y", terrain.spawn.y)))
+	else:
+		item.position = _ground_at_offset(int(entry.get("offset_cells", 0)))
+	item.pickup_requested.connect(_on_world_item_pickup)
+	gameplay_entities.add_child(item)
+	interaction_coordinator.register_interactable(item)
+	if not saved.is_empty():
+		item.restore_state(saved)
+	return item
+
+
+func _spawn_loot_crate(entry: Dictionary, saved: Dictionary = {}) -> LootCrate:
+	var crate := LootCrate.new()
+	crate.stable_id = String(entry.get("stable_id", "crate.%d" % gameplay_entities.get_child_count()))
+	crate.display_name = String(entry.get("display_name", "ящик"))
+	crate.military = bool(entry.get("military", false))
+	crate.interaction_priority = 5
+	var source_loot: Array = entry.get("loot", [])
+	var typed_loot: Array[Dictionary] = []
+	for loot_entry: Variant in source_loot:
+		if loot_entry is Dictionary:
+			typed_loot.append((loot_entry as Dictionary).duplicate(true))
+	crate.loot = typed_loot
+	if entry.has("position"):
+		var pos: Dictionary = entry.position
+		crate.position = Vector2(float(pos.get("x", terrain.spawn.x)), float(pos.get("y", terrain.spawn.y)))
+	else:
+		crate.position = _ground_at_offset(int(entry.get("offset_cells", 0)))
+	crate.loot_requested.connect(_on_crate_loot_requested)
+	gameplay_entities.add_child(crate)
+	interaction_coordinator.register_interactable(crate)
+	if not saved.is_empty():
+		crate.restore_state(saved)
+	return crate
+
+
+func _spawn_starter_enemy(saved: Dictionary = {}) -> Enemy:
+	starter_enemy = Enemy.new()
+	starter_enemy.stable_id = "waste.shambler.1"
+	starter_enemy.position = _ground_at_offset(54)
+	starter_enemy.set_target(player)
+	starter_enemy.set_terrain(terrain)
+	starter_enemy.player_damage_requested.connect(player.take_damage)
+	starter_enemy.died.connect(_on_enemy_died)
+	enemies.add_child(starter_enemy)
+	if not saved.is_empty():
+		starter_enemy.restore_state(saved)
+	return starter_enemy
+
+
+func _on_interaction_target_changed(_target: Node2D, prompt: String) -> void:
+	hud.call("set_interaction_prompt", prompt)
+
+
+func _on_world_item_pickup(item: WorldItem) -> void:
+	var remaining := inventory.add(StringName(item.item_id), item.count)
+	var accepted := item.count - remaining
+	if accepted <= 0:
+		hud.call("notify", "Инвентарь полон")
+		return
+	item.collect(accepted)
+	if item.item_id == "gasmask" and not player.mask:
+		inventory.remove(&"gasmask", 1)
+		player.equip_mask()
+		hud.call("notify", "Противогаз надет. Теперь можно дышать.")
+	else:
+		var definition := item_catalog.get_item(StringName(item.item_id))
+		hud.call("notify", "+%d %s" % [accepted, String(definition.get("name", item.item_id))])
+	interaction_coordinator.update_target()
+	_refresh_inventory_ui()
+
+
+func _on_crate_loot_requested(crate: LootCrate, loot: Array[Dictionary]) -> void:
+	var dropped := 0
+	for index in loot.size():
+		var entry: Dictionary = loot[index]
+		var item_id := StringName(entry.get("item_id", ""))
+		var count := maxi(0, int(entry.get("count", 0)))
+		var remaining := inventory.add(item_id, count)
+		if remaining > 0:
+			dropped += remaining
+			_spawn_world_item({
+				"stable_id": "%s.overflow.%d.%s" % [crate.stable_id, index, String(item_id)],
+				"item_id": String(item_id), "count": remaining,
+				"position": {"x": crate.position.x + randf_range(-12.0, 12.0), "y": crate.position.y},
+			})
+	hud.call("notify", "Ящик вскрыт" + (" — часть вещей осталась рядом" if dropped > 0 else ""))
+	_refresh_inventory_ui()
+
+
+func _refresh_inventory_ui() -> void:
+	if inventory_ui:
+		inventory_ui.set_inventory(inventory)
+	hud.queue_redraw()
+
+
+func capture_gameplay_state() -> Dictionary:
+	var world_items: Array[Dictionary] = []
+	var crates: Array[Dictionary] = []
+	for child: Node in gameplay_entities.get_children():
+		if child is WorldItem:
+			var item_state: Dictionary = (child as WorldItem).serialize_state()
+			item_state["position"] = {"x": (child as Node2D).position.x, "y": (child as Node2D).position.y}
+			world_items.append(item_state)
+		elif child is LootCrate:
+			var crate := child as LootCrate
+			var crate_state: Dictionary = crate.serialize_state()
+			crate_state["position"] = {"x": crate.position.x, "y": crate.position.y}
+			crate_state["display_name"] = crate.display_name
+			crate_state["military"] = crate.military
+			var saved_loot: Array[Dictionary] = []
+			for entry: Dictionary in crate.loot:
+				saved_loot.append(entry.duplicate(true))
+			crate_state["loot"] = saved_loot
+			crates.append(crate_state)
+	world_items.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return String(a.stable_id) < String(b.stable_id))
+	crates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return String(a.stable_id) < String(b.stable_id))
+	var saved_enemies: Array[Dictionary] = []
+	for child: Node in enemies.get_children():
+		if child is Enemy:
+			saved_enemies.append((child as Enemy).serialize_state())
+	return {
+		"inventory": inventory.serialize_state(),
+		"entities": {
+			"world_items": world_items,
+			"crates": crates,
+			"enemies": saved_enemies,
+		},
+		"combat": {
+			"pistol_magazine": _pistol_magazine,
+			"enemy_defeated": _enemy_defeated,
+			"drop_serial": _drop_serial,
+		},
+	}
+
+
+func apply_gameplay_state(state: Dictionary) -> void:
+	if bool(state.get("legacy_migration", false)):
+		reset_gameplay_state()
+		return
+	inventory.clear()
+	var inventory_state: Variant = state.get("inventory", {})
+	if inventory_state is Dictionary:
+		inventory.restore_state(inventory_state)
+	_clear_gameplay_nodes()
+	var entity_state: Variant = state.get("entities", {})
+	if entity_state is Dictionary:
+		var raw_items: Variant = entity_state.get("world_items", [])
+		if raw_items is Array:
+			for raw: Variant in raw_items:
+				if raw is Dictionary and not String(raw.get("stable_id", "")).is_empty() and not String(raw.get("item_id", "")).is_empty():
+					_spawn_world_item(raw, raw)
+		var raw_crates: Variant = entity_state.get("crates", [])
+		if raw_crates is Array:
+			for raw: Variant in raw_crates:
+				if raw is Dictionary and not String(raw.get("stable_id", "")).is_empty():
+					_spawn_loot_crate(raw, raw)
+		var raw_enemies: Variant = entity_state.get("enemies", [])
+		if raw_enemies is Array:
+			for raw: Variant in raw_enemies:
+				if raw is Dictionary and String(raw.get("stable_id", "")) == "waste.shambler.1":
+					_spawn_starter_enemy(raw)
+					break
+	var combat: Variant = state.get("combat", {})
+	if combat is Dictionary:
+		_pistol_magazine = clampi(int(combat.get("pistol_magazine", 0)), 0, 12)
+		_enemy_defeated = bool(combat.get("enemy_defeated", false))
+		_drop_serial = maxi(0, int(combat.get("drop_serial", 0)))
+	else:
+		_pistol_magazine = 0
+		_enemy_defeated = false
+	interaction_coordinator.update_target()
+	_refresh_inventory_ui()
+
+
+func _on_enemy_died(_stable_id: String) -> void:
+	_enemy_defeated = true
+	hud.call("notify", "Заражённый уничтожен. Путь свободен.")
+	if starter_enemy:
+		_drop_serial += 1
+		_spawn_world_item({
+			"stable_id": "enemy.drop.%d.bandage" % _drop_serial,
+			"item_id": "bandage", "count": 1,
+			"position": {"x": starter_enemy.position.x, "y": starter_enemy.position.y},
+		})
+
+
+func _on_player_died() -> void:
+	if not gameplay_active:
+		return
+	gameplay_active = false
+	player.set_physics_process(false)
+	_set_enemy_processing(false)
+	hud.call("set_interaction_prompt", "")
+	hud.call("notify", "Вы погибли. Возвращение к аварийному маяку…")
+	get_tree().create_timer(1.25).timeout.connect(func() -> void:
+		transition_manager.fade_to_black(func() -> void:
+			player.position = terrain.spawn - Vector2(0.0, 4.0)
+			player.hp = 65.0
+			player.food = maxf(player.food, 80.0)
+			player.water = maxf(player.water, 80.0)
+			player.rad = 0.0
+			player.set("_death_emitted", false)
+			gameplay_active = true
+			player.set_physics_process(true)
+			_set_enemy_processing(true)
+			transition_manager.fade_from_black(0.55)
+		, 0.28)
+	)
+
+
+func use_selected_item() -> bool:
+	var slot := inventory.get_selected()
+	if slot.is_empty():
+		return false
+	var item_id := StringName(slot.get("id", ""))
+	match item_id:
+		&"bandage":
+			if player.hp >= 100.0:
+				hud.call("notify", "Здоровье уже в порядке")
+				return false
+			player.heal(24.0)
+			inventory.remove_from_slot(inventory.selected_hotbar(), 1)
+			hud.call("notify", "Рана перевязана")
+		&"can":
+			if player.food >= Core.FOOD_MAX:
+				hud.call("notify", "Вы не голодны")
+				return false
+			player.food = minf(Core.FOOD_MAX, player.food + 48.0)
+			inventory.remove_from_slot(inventory.selected_hotbar(), 1)
+			hud.call("notify", "Тушёнка съедена")
+		&"gasmask":
+			if player.mask:
+				return false
+			inventory.remove_from_slot(inventory.selected_hotbar(), 1)
+			player.equip_mask()
+			hud.call("notify", "Противогаз надет")
+		&"filter":
+			if not player.mask:
+				hud.call("notify", "Сначала наденьте противогаз")
+				return false
+			if player.filter_wear > 90.0:
+				hud.call("notify", "Фильтр ещё свежий")
+				return false
+			inventory.remove_from_slot(inventory.selected_hotbar(), 1)
+			player.filter_wear = 100.0
+			hud.call("notify", "Фильтр заменён")
+		_:
+			return false
+	_refresh_inventory_ui()
+	return true
+
+
+func reload_selected_weapon() -> bool:
+	var slot := inventory.get_selected()
+	if StringName(slot.get("id", "")) != &"pistol":
+		return false
+	var needed := 12 - _pistol_magazine
+	var available := inventory.count(&"ammo9")
+	var loaded := mini(needed, available)
+	if loaded <= 0:
+		hud.call("notify", "Нет патронов 9 мм")
+		return false
+	inventory.remove(&"ammo9", loaded)
+	_pistol_magazine += loaded
+	hud.call("notify", "Пистолет: %d / 12" % _pistol_magazine)
+	_refresh_inventory_ui()
+	return true
+
+
+func _toggle_mask_equipment() -> bool:
+	if player.mask:
+		if inventory.add(&"gasmask", 1) > 0:
+			hud.call("notify", "В инвентаре нет места для противогаза")
+			return false
+		player.unequip_mask()
+		hud.call("notify", "Противогаз снят")
+	else:
+		if not inventory.remove(&"gasmask", 1):
+			hud.call("notify", "Противогаз не найден")
+			return false
+		player.equip_mask()
+		hud.call("notify", "Противогаз надет")
+	_refresh_inventory_ui()
+	return true
+
+
 func _show_start_menu() -> void:
 	gameplay_active = false
 	player.set_physics_process(false)
+	_set_enemy_processing(false)
 	get_tree().paused = true
 	main_menu.show_start(game_manager.has_save())
 
@@ -135,6 +541,7 @@ func _begin_game(load_saved: bool, animated: bool) -> void:
 		get_tree().paused = false
 		gameplay_active = true
 		player.set_physics_process(true)
+		_set_enemy_processing(true)
 		_last_zone_id = ""
 		if animated:
 			transition_manager.fade_from_black(0.75)
@@ -149,6 +556,7 @@ func _pause_game() -> void:
 	if not gameplay_active or dialog_manager.is_open():
 		return
 	gameplay_active = false
+	_set_enemy_processing(false)
 	get_tree().paused = true
 	main_menu.show_pause()
 
@@ -157,6 +565,7 @@ func _resume_game() -> void:
 	main_menu.hide_menu()
 	get_tree().paused = false
 	gameplay_active = true
+	_set_enemy_processing(true)
 
 
 func _save_game() -> void:
@@ -169,13 +578,10 @@ func _return_to_menu() -> void:
 	transition_manager.fade_to_black(func() -> void:
 		main_menu.show_start(game_manager.has_save())
 		gameplay_active = false
+		_set_enemy_processing(false)
 		get_tree().paused = true
 		transition_manager.fade_from_black(0.55)
 	, 0.35)
-
-
-func _on_beacon_proximity(nearby: bool, prompt: String) -> void:
-	hud.call("set_interaction_prompt", prompt if nearby else "")
 
 
 func _on_beacon_interacted() -> void:
@@ -183,6 +589,7 @@ func _on_beacon_interacted() -> void:
 		return
 	gameplay_active = false
 	player.set_physics_process(false)
+	_set_enemy_processing(false)
 	dialog_manager.show_dialogue([
 		{"speaker": "АВАРИЙНЫЙ КАНАЛ 04", "text": "...если кто-нибудь слышит: город к востоку ещё держится. Ищи красную башню."},
 		{"speaker": "НЕИЗВЕСТНЫЙ ГОЛОС", "text": "В лесу есть вода. В шахте — руда. Но после заката на открытом месте не оставайся."},
@@ -194,6 +601,14 @@ func _on_dialogue_finished() -> void:
 	if not main_menu.is_open():
 		gameplay_active = true
 		player.set_physics_process(true)
+		_set_enemy_processing(true)
+
+
+func _set_enemy_processing(enabled: bool) -> void:
+	if enemies == null:
+		return
+	for child: Node in enemies.get_children():
+		child.set_physics_process(enabled)
 
 
 # Отладочные ключи запуска. Нужны, чтобы проверять картинку и кадры без рук:
@@ -276,7 +691,25 @@ func _capture() -> void:
 			", свет ", terrain.light_at_px(player.position.x, player.position.y + 24.0))
 	if _shot_path == "" or _frame < _shot_frames:
 		return
-	var img := get_viewport().get_texture().get_image()
+	if DisplayServer.get_name() == "headless":
+		push_warning("[снимок] видеокадр пропущен в headless-режиме")
+		if _save_smoke and FileAccess.file_exists(game_manager.save_path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(game_manager.save_path))
+		_shot_path = ""
+		get_tree().quit()
+		return
+	var texture := get_viewport().get_texture()
+	if texture == null:
+		push_warning("[снимок] видеотекстура недоступна в headless-режиме")
+		_shot_path = ""
+		get_tree().quit()
+		return
+	var img := texture.get_image()
+	if img == null:
+		push_warning("[снимок] кадр недоступен в headless-режиме")
+		_shot_path = ""
+		get_tree().quit()
+		return
 	img.save_png(_shot_path)
 	print("[снимок] ", _shot_path, "  кадров в секунду: ", Engine.get_frames_per_second())
 	if _save_smoke and FileAccess.file_exists(game_manager.save_path):
@@ -437,6 +870,9 @@ func _make_dust() -> void:
 
 func _process(dt: float) -> void:
 	t += dt
+	_combat_cooldown = maxf(0.0, _combat_cooldown - dt)
+	if interaction_coordinator and gameplay_active and not inventory_ui.is_open() and not dialog_manager.is_open():
+		interaction_coordinator.update_target()
 	# сутки: 0 — ночь, 1 — полдень. Держим вечерний свет, он самый выразительный
 	day = 0.55 + 0.45 * sin(t / Core.DAY_LEN * TAU + 1.2)
 	if _day_fixed >= 0.0:
@@ -496,13 +932,59 @@ func _process(dt: float) -> void:
 		game_manager.save_game(self)
 
 	_auto_quality(dt)
-	_dig()
+	if not _combat_action():
+		_dig()
 	hud.queue_redraw()
 	_capture()
 
 
 func mouse_world() -> Vector2:
 	return get_global_mouse_position()
+
+
+func _combat_action() -> bool:
+	if not gameplay_active or inventory_ui.is_open() or dialog_manager.is_open() or main_menu.is_open():
+		return false
+	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or _combat_cooldown > 0.0:
+		return false
+	var slot := inventory.get_selected()
+	var item_id := StringName(slot.get("id", ""))
+	if item_id == &"pistol":
+		if _pistol_magazine <= 0:
+			_combat_cooldown = 0.32
+			hud.call("notify", "Пистолет пуст — нажмите R")
+			return true
+		_fire_pistol()
+		return true
+	if item_id != &"axe" and item_id != &"pick":
+		return false
+	if starter_enemy == null or starter_enemy.state == Enemy.State.DEAD:
+		return false
+	var target_point := starter_enemy.position + Vector2(0, -24)
+	if target_point.distance_to(player.position + Vector2(0, -28)) > 66.0:
+		return false
+	if target_point.distance_to(mouse_world()) > 42.0:
+		return false
+	starter_enemy.damage(34.0 if item_id == &"axe" else 20.0)
+	_combat_cooldown = 0.48
+	hud.call("notify", "Удар: %d урона" % (34 if item_id == &"axe" else 20))
+	return true
+
+
+func _fire_pistol() -> void:
+	var muzzle := player.position + Vector2(float(player.face) * 12.0, -38.0)
+	var direction := (mouse_world() - muzzle).normalized()
+	if is_zero_approx(direction.x) and is_zero_approx(direction.y):
+		direction = Vector2(float(player.face), 0.0)
+	player.face = 1 if direction.x >= 0.0 else -1
+	var bullet := Bullet.new()
+	add_child(bullet)
+	bullet.set_target(starter_enemy if starter_enemy and starter_enemy.state != Enemy.State.DEAD else null)
+	bullet.set_terrain(terrain)
+	bullet.setup(muzzle, direction, 26.0, player)
+	_pistol_magazine -= 1
+	_combat_cooldown = 0.24
+	hud.call("notify", "Пистолет: %d / 12" % _pistol_magazine)
 
 
 # Копание: кирка берёт круг радиусом 4 частицы, как 9×9 в браузерной версии
@@ -513,6 +995,9 @@ func _dig() -> void:
 		return
 	if player.dig_cool > 0.0:
 		return
+	var selected_id := StringName(inventory.get_selected().get("id", ""))
+	if selected_id != &"pick" and selected_id != &"axe":
+		return
 	var w := mouse_world()
 	if w.distance_to(player.position + Vector2(0, -28)) > 220.0:
 		return
@@ -521,6 +1006,12 @@ func _dig() -> void:
 	var got: Dictionary = terrain.dig(cx, cy, 4, 3.0)
 	player.dig_cool = 0.12
 	if not got.is_empty():
+		var lost := 0
+		for item_id: Variant in got:
+			lost += inventory.add(StringName(item_id), int(got[item_id]))
+		if lost > 0:
+			hud.call("notify", "Инвентарь полон — часть добычи потеряна")
+		_refresh_inventory_ui()
 		_dig_puff(w)
 
 
@@ -546,7 +1037,21 @@ func _dig_puff(at: Vector2) -> void:
 
 
 func _unhandled_input(e: InputEvent) -> void:
+	if e is InputEventKey and e.pressed and not e.echo and (e.physical_keycode == KEY_I or e.physical_keycode == KEY_TAB):
+		if gameplay_active or inventory_ui.is_open():
+			inventory_ui.set_open(not inventory_ui.is_open())
+			player.set_physics_process(not inventory_ui.is_open())
+			_set_enemy_processing(not inventory_ui.is_open())
+			hud.call("set_interaction_prompt", "" if inventory_ui.is_open() else interaction_coordinator.get_current_prompt())
+			get_viewport().set_input_as_handled()
+			return
 	if e is InputEventKey and e.pressed and not e.echo and e.keycode == KEY_ESCAPE:
+		if inventory_ui.is_open():
+			inventory_ui.set_open(false)
+			player.set_physics_process(true)
+			_set_enemy_processing(true)
+			get_viewport().set_input_as_handled()
+			return
 		if main_menu.is_open() and get_tree().paused and gameplay_active == false and main_menu.get("_mode") == "pause":
 			_resume_game()
 		elif gameplay_active:
@@ -555,8 +1060,11 @@ func _unhandled_input(e: InputEvent) -> void:
 		return
 	if not gameplay_active:
 		return
-	if e.is_action_pressed(&"interact") and beacon.is_nearby():
-		beacon.interact()
+	if inventory_ui.is_open():
+		return
+	if e.is_action_pressed(&"interact"):
+		if not interaction_coordinator.interact_current():
+			use_selected_item()
 		get_viewport().set_input_as_handled()
 		return
 	# приближение колесом и щипком на трекпаде — как в браузерной версии
@@ -568,13 +1076,18 @@ func _unhandled_input(e: InputEvent) -> void:
 	elif e is InputEventMagnifyGesture:
 		zoom_target = clampf(zoom_target * e.factor, 0.5, 6.0)
 	elif e is InputEventKey and e.pressed and not e.echo:
-		if e.physical_keycode == KEY_F1:
+		if e.physical_keycode >= KEY_1 and e.physical_keycode <= KEY_6:
+			inventory.select_hotbar(int(e.physical_keycode - KEY_1))
+			_refresh_inventory_ui()
+		elif e.physical_keycode == KEY_R:
+			reload_selected_weapon()
+		elif e.physical_keycode == KEY_F1:
 			# F1 переключает детализацию породы, если кадры просядут
 			var d: float = 0.0 if terrain_detail() > 0.5 else 1.0
 			terrain.set_uniform("detail", d)
 			_detail = d
 		elif e.physical_keycode == KEY_M:
-			player.mask = not player.mask
+			_toggle_mask_equipment()
 
 
 var _detail := 1.0

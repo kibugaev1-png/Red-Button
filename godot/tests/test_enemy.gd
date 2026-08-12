@@ -43,8 +43,15 @@ func _test_damage_death_and_state_roundtrip(script: Script) -> void:
 	restored.call("damage", 1000.0)
 	_expect(is_zero_approx(float(restored.get("hp"))), "lethal damage clamps hp to zero")
 	_expect(int(restored.get("state")) == 3, "lethal damage enters DEAD")
+	var malformed_alive := snapshot.duplicate(true)
+	malformed_alive["hp"] = 20.0
+	malformed_alive["state"] = 3
+	var normalized: Node2D = script.new()
+	normalized.call("restore_state", malformed_alive)
+	_expect(int(normalized.get("state")) == 0, "positive hp cannot restore as permanently DEAD")
 	enemy.free()
 	restored.free()
+	normalized.free()
 
 
 func _test_melee_attack_respects_cooldown(script: Script) -> void:

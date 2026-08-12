@@ -74,7 +74,12 @@ func restore_state(saved: Dictionary) -> void:
 		_facing = 1.0
 	_attack_cooldown_left = maxf(0.0, float(saved.get("attack_cooldown_left", 0.0)))
 	var saved_state: int = clampi(int(saved.get("state", State.IDLE)), State.IDLE, State.DEAD)
-	state = State.DEAD if hp <= 0.0 else saved_state as State
+	if hp <= 0.0:
+		state = State.DEAD
+	elif saved_state == State.DEAD:
+		state = State.IDLE
+	else:
+		state = saved_state as State
 	if state == State.DEAD:
 		velocity = Vector2.ZERO
 	queue_redraw()
@@ -134,6 +139,15 @@ func _chase_target() -> void:
 		return
 	_facing = signf(dx)
 	velocity.x = _facing * move_speed
+	# Мир из клеток меняется во время игры, поэтому навмеш здесь не подходит.
+	# Если прямо перед заражённым короткий уступ, пробуем тот же небольшой
+	# автоподъём, что и игрок, — иначе он навсегда упирался даже в один блок.
+	if _terrain and _terrain.has_method("is_solid_cell"):
+		var ahead := position + Vector2(_facing * (BODY_WIDTH * 0.5 + 2.0), -2.0)
+		var cx := int(floor(ahead.x / CELL_SIZE))
+		var foot_y := int(floor(ahead.y / CELL_SIZE))
+		if bool(_terrain.call("is_solid_cell", cx, foot_y)) and not bool(_terrain.call("is_solid_cell", cx, foot_y - 1)):
+			position.y -= CELL_SIZE
 
 
 func _try_melee_attack() -> void:

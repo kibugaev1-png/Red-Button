@@ -49,6 +49,7 @@ func _run() -> void:
 	_expect(int(loaded.get("version", 0)) == 2, "version 1 save migrates to version 2")
 	_expect(loaded.get("gameplay", null) is Dictionary, "migration supplies gameplay section")
 	_expect(loaded.gameplay.get("inventory", null) is Dictionary, "migration supplies inventory defaults")
+	_expect(loaded.gameplay.inventory.get("slots", []).size() == 30, "migration supplies 30 valid inventory slots")
 
 	file = FileAccess.open(TEST_SAVE, FileAccess.WRITE)
 	file.store_string("{ definitely broken")

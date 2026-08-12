@@ -76,8 +76,9 @@ func _draw() -> void:
 		sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.62, 0.59, 0.54))
 
 	# подсказки внизу
-	var help := "A  D  ДВИЖЕНИЕ     W  ПРЫЖОК     SHIFT  БЕГ     ЛКМ  КОПАТЬ     M  ПРОТИВОГАЗ     ESC  ПАУЗА"
+	var help := "A D  ДВИЖЕНИЕ   W  ПРЫЖОК   SHIFT  БЕГ   E  ВЗЯТЬ/ИСПОЛЬЗОВАТЬ   I  ИНВЕНТАРЬ   1–6  ХОТБАР   R  ПЕРЕЗАРЯДКА"
 	draw_string(font, Vector2(PAD, size.y - PAD), help, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.65, 0.62, 0.56, 0.78))
+	_draw_hotbar(font)
 
 	if interaction_prompt != "":
 		var prompt_size := font.get_string_size(interaction_prompt, HORIZONTAL_ALIGNMENT_LEFT, -1, 14)
@@ -100,6 +101,49 @@ func _draw() -> void:
 		var ws := font.get_string_size(warn, HORIZONTAL_ALIGNMENT_LEFT, -1, 22)
 		draw_string(font, Vector2((size.x - ws.x) * 0.5, size.y * 0.22), warn,
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(0.85, 0.2, 0.16))
+	else:
+		var filter_text := "ФИЛЬТР %d%%" % roundi(p.filter_wear)
+		var fs := font.get_string_size(filter_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10)
+		draw_string(font, Vector2(size.x - PAD - fs.x, PAD + 51), filter_text,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(0.63, 0.7, 0.59))
+
+
+func _draw_hotbar(font: Font) -> void:
+	if game.get("inventory") == null or game.get("item_catalog") == null:
+		return
+	var inventory: RefCounted = game.get("inventory")
+	var catalog: RefCounted = game.get("item_catalog")
+	var selected := int(inventory.call("selected_hotbar"))
+	var slot_size := Vector2(84.0, 48.0)
+	var gap := 7.0
+	var total := slot_size.x * 6.0 + gap * 5.0
+	var start_x := (size.x - total) * 0.5
+	var y := size.y - 86.0
+	for index in 6:
+		var rect := Rect2(start_x + index * (slot_size.x + gap), y, slot_size.x, slot_size.y)
+		var active := index == selected
+		draw_style_box(UIStyle.panel(
+			Color(0.12, 0.045, 0.038, 0.9) if active else Color(0.025, 0.022, 0.02, 0.72),
+			6, Color(0.85, 0.18, 0.14, 0.8) if active else Color(1, 1, 1, 0.1)
+		), rect)
+		draw_string(font, rect.position + Vector2(6, 13), str(index + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.64, 0.61, 0.55))
+		var slot: Dictionary = inventory.call("get_slot", index)
+		if slot.is_empty():
+			continue
+		var definition: Dictionary = catalog.call("get_item", StringName(slot.get("id", "")))
+		var name := String(definition.get("name", slot.get("id", "")))
+		if name.length() > 13:
+			name = name.left(12) + "…"
+		draw_string(font, rect.position + Vector2(7, 31), name, HORIZONTAL_ALIGNMENT_LEFT, slot_size.x - 14, 9, Color(0.9, 0.86, 0.78))
+		var quantity := "×%d" % int(slot.get("quantity", 0))
+		var qs := font.get_string_size(quantity, HORIZONTAL_ALIGNMENT_LEFT, -1, 9)
+		draw_string(font, rect.end - Vector2(qs.x + 6, 7), quantity, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.78, 0.7, 0.53))
+	if game.get("_pistol_magazine") != null:
+		var selected_slot: Dictionary = inventory.call("get_selected")
+		if StringName(selected_slot.get("id", "")) == &"pistol":
+			var ammo := "%d / 12   •   запас %d" % [int(game.get("_pistol_magazine")), int(inventory.call("count", &"ammo9"))]
+			var asize := font.get_string_size(ammo, HORIZONTAL_ALIGNMENT_LEFT, -1, 11)
+			draw_string(font, Vector2((size.x - asize.x) * 0.5, y - 9), ammo, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.9, 0.8, 0.54))
 
 
 func _bar(at: Vector2, frac: float, col: Color, label: String, value: String) -> void:
