@@ -7,6 +7,10 @@
 extends Node2D
 class_name Player
 
+signal health_changed(current: float, maximum: float)
+signal damaged(amount: float)
+signal died
+
 const W := 13.0
 const H := 54.0
 const SPEED := 1.65
@@ -28,12 +32,51 @@ var hp := 100.0
 var food := Core.FOOD_MAX
 var water := Core.WATER_MAX
 var rad := 0.0
-var mask := true              # противогаз: снимешь — радиация убьёт
+var mask := false             # в начале противогаз лежит рядом со стартом
+var filter_wear := 100.0
+var _death_emitted := false
 
 
 func setup(t: Terrain, at: Vector2) -> void:
 	terrain = t
 	position = at
+
+
+func take_damage(amount: float) -> void:
+	if amount <= 0.0 or hp <= 0.0:
+		return
+	hp = clampf(hp - amount, 0.0, 100.0)
+	damaged.emit(amount)
+	health_changed.emit(hp, 100.0)
+	if hp <= 0.0 and not _death_emitted:
+		_death_emitted = true
+		died.emit()
+
+
+func heal(amount: float) -> void:
+	if amount <= 0.0 or hp <= 0.0:
+		return
+	hp = clampf(hp + amount, 0.0, 100.0)
+	health_changed.emit(hp, 100.0)
+
+
+func equip_mask() -> void:
+	mask = true
+
+
+func unequip_mask() -> void:
+	mask = false
+
+
+func reset_survivor() -> void:
+	hp = 100.0
+	food = Core.FOOD_MAX
+	water = Core.WATER_MAX
+	rad = 0.0
+	mask = false
+	filter_wear = 100.0
+	_death_emitted = false
+	health_changed.emit(hp, 100.0)
 
 
 func _physics_process(dt: float) -> void:
