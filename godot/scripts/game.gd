@@ -13,13 +13,24 @@ var sky_rect: ColorRect
 var post_rect: ColorRect
 var lamp: PointLight2D
 var hud: CanvasItem
+var game_manager: GameManager
+var audio_manager: AudioManager
+var transition_manager: TransitionManager
+var dialog_manager: DialogManager
+var main_menu: MainMenu
+var beacon: InteractionBeacon
 var day := 1.0
 var zoom_target := 1.6
 var t := 0.0
+var gameplay_active: bool = false
+var _camera_ahead := Vector2.ZERO
+var _last_zone_id: String = ""
+var _autosave_elapsed: float = 0.0
 
 
 func _ready() -> void:
 	_bind_input()
+	_make_managers()
 	_make_environment()
 	_make_sky()
 
@@ -33,6 +44,7 @@ func _ready() -> void:
 	add_child(player)
 	player.setup(terrain, terrain.spawn - Vector2(0, 4))
 	player.z_index = 10
+	_make_beacon()
 
 	_make_lamp()
 	_make_dust()
@@ -52,6 +64,9 @@ func _ready() -> void:
 	layer.add_child(hud)
 	add_child(layer)
 	hud.set("game", self)
+	beacon.proximity_changed.connect(_on_beacon_proximity)
+	beacon.interacted.connect(_on_beacon_interacted)
+	dialog_manager.dialogue_finished.connect(_on_dialogue_finished)
 
 	# Ограничение разрешения отрисовки. Без него игра рисует в разрешении
 	# ретина-экрана — 2560×1440 вместо 1280×720, вчетверо больше пикселей. На
@@ -62,6 +77,123 @@ func _ready() -> void:
 
 	print("[игра] готова, появление: ", player.position)
 	_debug_args()
+	if _shot_path != "":
+		_begin_game(false, false)
+	else:
+		_show_start_menu()
+
+
+func _make_managers() -> void:
+	game_manager = GameManager.new()
+	game_manager.name = "GameManager"
+	add_child(game_manager)
+	audio_manager = AudioManager.new()
+	audio_manager.name = "AudioManager"
+	add_child(audio_manager)
+	dialog_manager = DialogManager.new()
+	dialog_manager.name = "DialogManager"
+	add_child(dialog_manager)
+	main_menu = MainMenu.new()
+	main_menu.name = "MainMenu"
+	add_child(main_menu)
+	transition_manager = TransitionManager.new()
+	transition_manager.name = "TransitionManager"
+	add_child(transition_manager)
+	main_menu.start_requested.connect(func() -> void: _begin_game(false, true))
+	main_menu.continue_requested.connect(func() -> void: _begin_game(true, true))
+	main_menu.resume_requested.connect(_resume_game)
+	main_menu.save_requested.connect(_save_game)
+	main_menu.menu_requested.connect(_return_to_menu)
+	main_menu.volume_changed.connect(audio_manager.set_bus_volume)
+
+
+func _make_beacon() -> void:
+	beacon = InteractionBeacon.new()
+	beacon.position = terrain.spawn + Vector2(104, 0)
+	beacon.position.y = terrain.surface_px(beacon.position.x)
+	beacon.set_player(player)
+	add_child(beacon)
+
+
+func _show_start_menu() -> void:
+	gameplay_active = false
+	player.set_physics_process(false)
+	get_tree().paused = true
+	main_menu.show_start(game_manager.has_save())
+
+
+func _begin_game(load_saved: bool, animated: bool) -> void:
+	var begin := func() -> void:
+		if load_saved:
+			if not game_manager.load_game(self):
+				game_manager.new_game(self)
+		else:
+			game_manager.new_game(self)
+		cam.position = player.position
+		cam.reset_smoothing()
+		main_menu.hide_menu()
+		get_tree().paused = false
+		gameplay_active = true
+		player.set_physics_process(true)
+		_last_zone_id = ""
+		if animated:
+			transition_manager.fade_from_black(0.75)
+	if animated:
+		get_tree().paused = true
+		transition_manager.fade_to_black(begin, 0.38)
+	else:
+		begin.call()
+
+
+func _pause_game() -> void:
+	if not gameplay_active or dialog_manager.is_open():
+		return
+	gameplay_active = false
+	get_tree().paused = true
+	main_menu.show_pause()
+
+
+func _resume_game() -> void:
+	main_menu.hide_menu()
+	get_tree().paused = false
+	gameplay_active = true
+
+
+func _save_game() -> void:
+	if game_manager.save_game(self):
+		hud.call("notify", "Игра сохранена")
+
+
+func _return_to_menu() -> void:
+	game_manager.save_game(self)
+	transition_manager.fade_to_black(func() -> void:
+		main_menu.show_start(game_manager.has_save())
+		gameplay_active = false
+		get_tree().paused = true
+		transition_manager.fade_from_black(0.55)
+	, 0.35)
+
+
+func _on_beacon_proximity(nearby: bool, prompt: String) -> void:
+	hud.call("set_interaction_prompt", prompt if nearby else "")
+
+
+func _on_beacon_interacted() -> void:
+	if dialog_manager.is_open():
+		return
+	gameplay_active = false
+	player.set_physics_process(false)
+	dialog_manager.show_dialogue([
+		{"speaker": "АВАРИЙНЫЙ КАНАЛ 04", "text": "...если кто-нибудь слышит: город к востоку ещё держится. Ищи красную башню."},
+		{"speaker": "НЕИЗВЕСТНЫЙ ГОЛОС", "text": "В лесу есть вода. В шахте — руда. Но после заката на открытом месте не оставайся."},
+		{"speaker": "СИСТЕМА", "text": "Сигнал повторяется. На корпусе маяка выцарапано: «Не снимай противогаз»."},
+	])
+
+
+func _on_dialogue_finished() -> void:
+	if not main_menu.is_open():
+		gameplay_active = true
+		player.set_physics_process(true)
 
 
 # Отладочные ключи запуска. Нужны, чтобы проверять картинку и кадры без рук:
@@ -69,12 +201,16 @@ func _ready() -> void:
 var _shot_path := ""
 var _shot_frames := 60
 var _frame := 0
+var _menu_shot_path := ""
+var _interaction_smoke := false
 
 
 func _debug_args() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--shot="):
 			_shot_path = a.substr(7)
+		elif a.begins_with("--menu-shot="):
+			_menu_shot_path = a.substr(12)
 		elif a.begins_with("--frames="):
 			_shot_frames = int(a.substr(9))
 		elif a.begins_with("--at="):
@@ -88,8 +224,19 @@ func _debug_args() -> void:
 			cam.zoom = Vector2(zoom_target, zoom_target)
 		elif a == "--dig":
 			_test_dig = true
+		elif a == "--interact-smoke":
+			_interaction_smoke = true
 		elif a.begins_with("--day="):
 			_day_fixed = float(a.substr(6))
+	if _menu_shot_path != "":
+		get_tree().create_timer(0.8, true).timeout.connect(_capture_menu)
+
+
+func _capture_menu() -> void:
+	var img := get_viewport().get_texture().get_image()
+	img.save_png(_menu_shot_path)
+	print("[снимок меню] ", _menu_shot_path)
+	get_tree().quit()
 
 
 var _day_fixed := -1.0
@@ -99,6 +246,11 @@ var _test_dig := false
 
 func _capture() -> void:
 	_frame += 1
+	if _interaction_smoke and _frame == 20:
+		player.position = beacon.position
+		beacon.set("_nearby", true)
+		beacon.interact()
+		print("[проверка] диалог открыт: ", dialog_manager.is_open())
 	# Проверка копания без рук: роем яму под ногами и убеждаемся, что свет
 	# пересчитался, тайлы перезалились и ничего не упало.
 	if _test_dig and _frame == 20:
@@ -122,7 +274,7 @@ func _bind_input() -> void:
 	var binds := {
 		"left": [KEY_A, KEY_LEFT], "right": [KEY_D, KEY_RIGHT],
 		"up": [KEY_W, KEY_UP, KEY_SPACE], "down": [KEY_S, KEY_DOWN],
-		"sprint": [KEY_SHIFT], "quality": [KEY_F1],
+		"sprint": [KEY_SHIFT], "quality": [KEY_F1], "interact": [KEY_E],
 	}
 	for action in binds:
 		var a := StringName(action)
@@ -275,7 +427,10 @@ func _process(dt: float) -> void:
 	if _day_fixed >= 0.0:
 		day = _day_fixed
 
-	cam.position = player.position + Vector2(0, -20)
+	var desired_ahead := Vector2(clampf(player.vx * 22.0, -48.0, 48.0), 0.0)
+	_camera_ahead = _camera_ahead.lerp(desired_ahead, clampf(dt * 2.5, 0.0, 1.0))
+	var idle_drift := Vector2(sin(t * 0.19) * 2.2, sin(t * 0.13) * 1.4) if absf(player.vx) < 0.05 else Vector2.ZERO
+	cam.position = player.position + Vector2(0, -20) + _camera_ahead + idle_drift
 	cam.zoom = cam.zoom.lerp(Vector2(zoom_target, zoom_target), minf(1.0, dt * 8.0))
 	lamp.position = player.position + Vector2(0, -34)
 	# Днём лампа не нужна: на солнце она только выжигала фигуру в белое пятно.
@@ -315,6 +470,16 @@ func _process(dt: float) -> void:
 	terrain.set_uniform("day", day)
 	terrain.set_uniform("time_s", t)
 
+	var zone: Dictionary = Core.zone_at_px(player.position.x)
+	var zone_id: String = zone.id
+	if gameplay_active and zone_id != _last_zone_id:
+		_last_zone_id = zone_id
+		hud.call("show_zone", String(zone.name))
+	_autosave_elapsed += dt
+	if gameplay_active and _autosave_elapsed >= 45.0:
+		_autosave_elapsed = 0.0
+		game_manager.save_game(self)
+
 	_auto_quality(dt)
 	_dig()
 	hud.queue_redraw()
@@ -327,6 +492,8 @@ func mouse_world() -> Vector2:
 
 # Копание: кирка берёт круг радиусом 4 частицы, как 9×9 в браузерной версии
 func _dig() -> void:
+	if not gameplay_active or dialog_manager.is_open() or main_menu.is_open():
+		return
 	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		return
 	if player.dig_cool > 0.0:
@@ -364,6 +531,19 @@ func _dig_puff(at: Vector2) -> void:
 
 
 func _unhandled_input(e: InputEvent) -> void:
+	if e is InputEventKey and e.pressed and not e.echo and e.keycode == KEY_ESCAPE:
+		if main_menu.is_open() and get_tree().paused and gameplay_active == false and main_menu.get("_mode") == "pause":
+			_resume_game()
+		elif gameplay_active:
+			_pause_game()
+		get_viewport().set_input_as_handled()
+		return
+	if not gameplay_active:
+		return
+	if e.is_action_pressed(&"interact") and beacon.is_nearby():
+		beacon.interact()
+		get_viewport().set_input_as_handled()
+		return
 	# приближение колесом и щипком на трекпаде — как в браузерной версии
 	if e is InputEventMouseButton and e.pressed:
 		if e.button_index == MOUSE_BUTTON_WHEEL_UP:
