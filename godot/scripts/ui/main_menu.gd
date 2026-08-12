@@ -210,3 +210,10 @@ func _process(delta: float) -> void:
 		_photo.scale = Vector2.ONE * (1.035 + sin(Time.get_ticks_msec() * 0.00012) * 0.008)
 		_photo.position.x = sin(Time.get_ticks_msec() * 0.00008) * 8.0
 
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not is_open() or _mode != "pause":
+		return
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		resume_requested.emit()
+		get_viewport().set_input_as_handled()

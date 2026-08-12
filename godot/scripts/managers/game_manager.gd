@@ -63,7 +63,10 @@ func capture_game(game: Node) -> Dictionary:
 			"water": player.get("water"), "rad": player.get("rad"),
 			"mask": player.get("mask"),
 		},
-		"world": {"day": game.get("day"), "zoom": game.get("zoom_target")},
+		"world": {
+			"day": game.get("day"), "time": game.get("t"), "zoom": game.get("zoom_target"),
+			"terrain_changes": game.get("terrain").call("get_changes"),
+		},
 	}
 
 
@@ -86,7 +89,11 @@ func load_game(game: Node) -> bool:
 	player.set("mask", bool(p.get("mask", true)))
 	var world: Dictionary = state.world
 	game.set("day", clampf(float(world.get("day", 0.8)), 0.0, 1.0))
+	game.set("t", maxf(0.0, float(world.get("time", 0.0))))
 	game.set("zoom_target", clampf(float(world.get("zoom", 1.6)), 0.5, 6.0))
+	var changes: Variant = world.get("terrain_changes", [])
+	if changes is Array and game.get("terrain") != null:
+		game.get("terrain").call("apply_changes", changes)
 	return true
 
 
@@ -101,3 +108,4 @@ func new_game(game: Node) -> void:
 	player.set("water", Core.WATER_MAX)
 	player.set("rad", 0.0)
 	player.set("mask", true)
+	game.get("terrain").call("reset_changes")

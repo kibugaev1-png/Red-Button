@@ -20,6 +20,8 @@ var spawn := Vector2.ZERO
 
 var _tiles: Array = []                 # {sprite, image, texture, rect, dirty}
 var _dirty_tiles := {}
+var _changes: Dictionary = {}         # индекс клетки -> новый материал, для сохранения мира
+var _original: Dictionary = {}        # первый материал клетки до изменения
 var _shader: Shader = preload("res://shaders/terrain.gdshader")
 
 # Фотографические текстуры пород (наборы CC0 с ambientCG). Лежат слоями в
@@ -65,10 +67,15 @@ func solid_at_px(x: float, y: float) -> bool:
 	return is_solid_cell(int(floor(x / Core.CELL)), int(floor(y / Core.CELL)))
 
 
-func set_mat(cx: int, cy: int, m: int) -> void:
+func set_mat(cx: int, cy: int, m: int, record_change: bool = true) -> void:
 	if cx < 0 or cy < 0 or cx >= Core.WW or cy >= Core.WH:
 		return
-	data[(cy * Core.WW + cx) * 2] = m
+	var index := cy * Core.WW + cx
+	if record_change:
+		if not _original.has(index):
+			_original[index] = int(data[index * 2])
+		_changes[index] = m
+	data[index * 2] = m
 	WorldGen.relight_column(data, cx)   # свет ниже правки надо пересчитать
 	_mark_dirty_column(cx, cy)
 
@@ -90,7 +97,11 @@ func dig(cx: int, cy: int, radius: int, max_hard: float) -> Dictionary:
 			var info: Dictionary = Core.MATS[m]
 			if float(info.hard) > max_hard:
 				continue               # инструмент не берёт эту породу
-			data[(y * Core.WW + x) * 2] = Core.AIR
+			var index := y * Core.WW + x
+			if not _original.has(index):
+				_original[index] = m
+			data[index * 2] = Core.AIR
+			_changes[index] = Core.AIR
 			cols[x] = true
 			var d: String = info.drop
 			if d != "":
@@ -106,6 +117,50 @@ func place(cx: int, cy: int, m: int) -> bool:
 		return false
 	set_mat(cx, cy, m)
 	return true
+
+
+func get_changes() -> Array:
+	var out: Array = []
+	for index: Variant in _changes:
+		out.append([int(index), int(_changes[index])])
+	return out
+
+
+func apply_changes(changes: Array) -> void:
+	_changes.clear()
+	_original.clear()
+	var touched_columns: Dictionary = {}
+	for entry: Variant in changes:
+		if not entry is Array or entry.size() != 2:
+			continue
+		var index := int(entry[0])
+		var material := int(entry[1])
+		if index < 0 or index >= Core.WW * Core.WH or material < 0 or material >= Core.MAT_COUNT:
+			continue
+		var cx := index % Core.WW
+		var cy := index / Core.WW
+		_original[index] = int(data[index * 2])
+		data[index * 2] = material
+		_changes[index] = material
+		touched_columns[cx] = true
+		_mark_dirty_column(cx, cy)
+	for cx: Variant in touched_columns:
+		WorldGen.relight_column(data, int(cx))
+
+
+func reset_changes() -> void:
+	var touched_columns: Dictionary = {}
+	for index: Variant in _original:
+		var cell_index := int(index)
+		data[cell_index * 2] = int(_original[index])
+		var cx := cell_index % Core.WW
+		var cy := cell_index / Core.WW
+		touched_columns[cx] = true
+		_mark_dirty_column(cx, cy)
+	for cx: Variant in touched_columns:
+		WorldGen.relight_column(data, int(cx))
+	_changes.clear()
+	_original.clear()
 
 
 # Высота поверхности в пикселях — нужна камере и появлению игрока

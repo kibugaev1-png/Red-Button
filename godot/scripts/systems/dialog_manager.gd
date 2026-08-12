@@ -28,6 +28,7 @@ func _build() -> void:
 	safe.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(safe)
 	var bottom := VBoxContainer.new()
+	bottom.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	safe.add_child(bottom)
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL

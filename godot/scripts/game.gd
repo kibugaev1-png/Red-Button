@@ -127,7 +127,7 @@ func _begin_game(load_saved: bool, animated: bool) -> void:
 		if load_saved:
 			if not game_manager.load_game(self):
 				game_manager.new_game(self)
-		else:
+		elif animated or _shot_path == "":
 			game_manager.new_game(self)
 		cam.position = player.position
 		cam.reset_smoothing()
@@ -203,6 +203,7 @@ var _shot_frames := 60
 var _frame := 0
 var _menu_shot_path := ""
 var _interaction_smoke := false
+var _save_smoke := false
 
 
 func _debug_args() -> void:
@@ -226,6 +227,9 @@ func _debug_args() -> void:
 			_test_dig = true
 		elif a == "--interact-smoke":
 			_interaction_smoke = true
+		elif a == "--save-smoke":
+			_save_smoke = true
+			game_manager.save_path = "user://cinematic_smoke_save.json"
 		elif a.begins_with("--day="):
 			_day_fixed = float(a.substr(6))
 	if _menu_shot_path != "":
@@ -251,6 +255,15 @@ func _capture() -> void:
 		beacon.set("_nearby", true)
 		beacon.interact()
 		print("[проверка] диалог открыт: ", dialog_manager.is_open())
+	if _save_smoke and _frame == 24:
+		var expected := player.position
+		var saved := game_manager.save_game(self)
+		player.position += Vector2(333, -111)
+		var loaded := game_manager.load_game(self)
+		var restored := player.position.is_equal_approx(expected)
+		print("[проверка] сохранение: ", saved, ", загрузка: ", loaded, ", позиция: ", restored)
+		if not saved or not loaded or not restored:
+			push_error("[проверка] сохранение игры не прошло")
 	# Проверка копания без рук: роем яму под ногами и убеждаемся, что свет
 	# пересчитался, тайлы перезалились и ничего не упало.
 	if _test_dig and _frame == 20:
@@ -266,6 +279,8 @@ func _capture() -> void:
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(_shot_path)
 	print("[снимок] ", _shot_path, "  кадров в секунду: ", Engine.get_frames_per_second())
+	if _save_smoke and FileAccess.file_exists(game_manager.save_path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(game_manager.save_path))
 	_shot_path = ""
 	get_tree().quit()
 
@@ -445,13 +460,14 @@ func _process(dt: float) -> void:
 	# Линию горизонта берём по земле под игроком, а не по среднему уровню мира:
 	# иначе солнце и силуэты города уезжают за землю и небо выглядит заливкой.
 	sm.set_shader_parameter("horizon_y", terrain.surface_px(player.position.x))
-	var bgs := _bg_for(player.position.x)
+	var bgs: Array = _bg_for(player.position.x)
 	if bgs[0] != null:
 		sm.set_shader_parameter("bg_a", bgs[0])
 		sm.set_shader_parameter("bg_b", bgs[1] if bgs[1] != null else bgs[0])
 		sm.set_shader_parameter("bg_mix", bgs[2])
 	# дымка, яркость и параллакс фона — свои у каждой локации
-	var look: Dictionary = ZoneLook.of(Core.zone_at_px(player.position.x).id)
+	var current_zone: Dictionary = Core.zone_at_px(player.position.x)
+	var look: Dictionary = ZoneLook.of(current_zone.id)
 	sm.set_shader_parameter("exposure", look.bg_exposure)
 	sm.set_shader_parameter("fog_amount", look.bg_fog)
 	sm.set_shader_parameter("haze", look.bg_haze)
@@ -470,11 +486,10 @@ func _process(dt: float) -> void:
 	terrain.set_uniform("day", day)
 	terrain.set_uniform("time_s", t)
 
-	var zone: Dictionary = Core.zone_at_px(player.position.x)
-	var zone_id: String = zone.id
+	var zone_id: String = current_zone.id
 	if gameplay_active and zone_id != _last_zone_id:
 		_last_zone_id = zone_id
-		hud.call("show_zone", String(zone.name))
+		hud.call("show_zone", String(current_zone.name))
 	_autosave_elapsed += dt
 	if gameplay_active and _autosave_elapsed >= 45.0:
 		_autosave_elapsed = 0.0
