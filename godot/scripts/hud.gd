@@ -16,7 +16,10 @@ var _zone_alpha: float = 0.0
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	# Именно set_anchors_and_offsets_preset, а не set_anchors_preset: якоря без
+	# отступов оставляют размер нулевым, и всё, что считается от size, — хотбар,
+	# подсказки, название локации, счётчик патронов — уезжает за край экрана.
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
