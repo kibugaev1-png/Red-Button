@@ -37,6 +37,11 @@ var _pistol_magazine: int = 0
 var _combat_cooldown: float = 0.0
 var _enemy_defeated: bool = false
 var _drop_serial: int = 0
+var mining := Mining.new()
+# Заряд ручного бура в блоках. Найденный в небоскрёбах бур уже заряжен.
+const DRILL_CHARGE_FULL := 120.0
+var _drill_charge: float = 0.0
+var _mining_hint_cooldown: float = 0.0
 
 
 func _ready() -> void:
@@ -184,6 +189,18 @@ func get_start_gameplay_spec() -> Dictionary:
 					{"item_id": "can", "count": 1},
 				],
 			},
+			# Руины небоскрёбов, 3600 клеток на восток от старта. Ручной бур уже
+			# заряжен, рядом пулемёт. Дорога туда долгая и опасная — это и есть
+			# цена за инструмент, который ускоряет ломание вчетверо.
+			{
+				"stable_id": "towers.armory", "display_name": "оружейный ящик", "military": true,
+				"offset_cells": 3600,
+				"loot": [
+					{"item_id": "handheld_drill", "count": 1},
+					{"item_id": "heavy", "count": 1},
+					{"item_id": "ammo_heavy", "count": 90},
+				],
+			},
 		],
 	}
 
@@ -194,6 +211,8 @@ func reset_gameplay_state() -> void:
 	inventory.clear()
 	_pistol_magazine = 0
 	_enemy_defeated = false
+	_drill_charge = 0.0
+	mining.reset()
 	_clear_gameplay_nodes()
 	_spawn_default_gameplay()
 	if inventory_ui:
@@ -301,6 +320,7 @@ func _on_world_item_pickup(item: WorldItem) -> void:
 	else:
 		var definition := item_catalog.get_item(StringName(item.item_id))
 		hud.call("notify", "+%d %s" % [accepted, String(definition.get("name", item.item_id))])
+		_charge_drill_if_taken(StringName(item.item_id))
 	interaction_coordinator.update_target()
 	_refresh_inventory_ui()
 
@@ -319,8 +339,19 @@ func _on_crate_loot_requested(crate: LootCrate, loot: Array[Dictionary]) -> void
 				"item_id": String(item_id), "count": remaining,
 				"position": {"x": crate.position.x + randf_range(-12.0, 12.0), "y": crate.position.y},
 			})
+	for entry: Dictionary in loot:
+		_charge_drill_if_taken(StringName(entry.get("item_id", "")))
 	hud.call("notify", "Ящик вскрыт" + (" — часть вещей осталась рядом" if dropped > 0 else ""))
 	_refresh_inventory_ui()
+
+
+# Бур из руин достаётся уже заряженным: искать к нему источник питания там же,
+# где его нашёл, — лишний шаг, который ничего не добавляет.
+func _charge_drill_if_taken(item_id: StringName) -> void:
+	if item_id != &"handheld_drill":
+		return
+	_drill_charge = DRILL_CHARGE_FULL
+	hud.call("notify", "Ручной бур заряжен: %d блоков" % int(DRILL_CHARGE_FULL))
 
 
 func _refresh_inventory_ui() -> void:
@@ -365,6 +396,7 @@ func capture_gameplay_state() -> Dictionary:
 			"pistol_magazine": _pistol_magazine,
 			"enemy_defeated": _enemy_defeated,
 			"drop_serial": _drop_serial,
+			"drill_charge": _drill_charge,
 		},
 	}
 
@@ -401,9 +433,12 @@ func apply_gameplay_state(state: Dictionary) -> void:
 		_pistol_magazine = clampi(int(combat.get("pistol_magazine", 0)), 0, 12)
 		_enemy_defeated = bool(combat.get("enemy_defeated", false))
 		_drop_serial = maxi(0, int(combat.get("drop_serial", 0)))
+		_drill_charge = clampf(float(combat.get("drill_charge", 0.0)), 0.0, DRILL_CHARGE_FULL)
 	else:
 		_pistol_magazine = 0
 		_enemy_defeated = false
+		_drill_charge = 0.0
+	mining.reset()
 	interaction_coordinator.update_target()
 	_refresh_inventory_ui()
 
@@ -932,8 +967,12 @@ func _process(dt: float) -> void:
 		game_manager.save_game(self)
 
 	_auto_quality(dt)
+	_mining_hint_cooldown = maxf(0.0, _mining_hint_cooldown - dt)
 	if not _combat_action():
-		_dig()
+		_dig(dt)
+	else:
+		mining.reset()
+	queue_redraw()
 	hud.queue_redraw()
 	_capture()
 
@@ -987,32 +1026,69 @@ func _fire_pistol() -> void:
 	hud.call("notify", "Пистолет: %d / 12" % _pistol_magazine)
 
 
-# Копание: кирка берёт круг радиусом 4 частицы, как 9×9 в браузерной версии
-func _dig() -> void:
+# Ломание породы: блок 2×2 с удержанием кнопки. Вся логика времени и твёрдости
+# живёт в scripts/systems/mining.gd и покрыта тестом — здесь только ввод,
+# дистанция, добыча в инвентарь и расход заряда бура.
+func _dig(dt: float) -> void:
 	if not gameplay_active or dialog_manager.is_open() or main_menu.is_open():
+		mining.reset()
 		return
 	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		mining.reset()
 		return
-	if player.dig_cool > 0.0:
-		return
+
 	var selected_id := StringName(inventory.get_selected().get("id", ""))
-	if selected_id != &"pick" and selected_id != &"axe":
-		return
+	# Рукой тоже можно — медленно и только мягкую породу. Пустая рука, которая
+	# не делает вообще ничего, читается как поломка управления.
+	if selected_id != &"pick" and selected_id != &"axe" and selected_id != &"handheld_drill":
+		selected_id = &""
+	if selected_id == &"handheld_drill" and _drill_charge <= 0.0:
+		selected_id = &""     # разряженный бур работает как рука
+
 	var w := mouse_world()
 	if w.distance_to(player.position + Vector2(0, -28)) > 220.0:
+		mining.decay(dt)
 		return
-	var cx := int(floor(w.x / Core.CELL))
-	var cy := int(floor(w.y / Core.CELL))
-	var got: Dictionary = terrain.dig(cx, cy, 4, 3.0)
-	player.dig_cool = 0.12
-	if not got.is_empty():
-		var lost := 0
-		for item_id: Variant in got:
-			lost += inventory.add(StringName(item_id), int(got[item_id]))
-		if lost > 0:
-			hud.call("notify", "Инвентарь полон — часть добычи потеряна")
-		_refresh_inventory_ui()
-		_dig_puff(w)
+
+	var origin: Vector2i = Mining.group_of(int(floor(w.x / Core.CELL)), int(floor(w.y / Core.CELL)))
+	var result: Dictionary = mining.advance(dt, terrain, origin, selected_id)
+	match String(result.get("state", "")):
+		"too_hard":
+			if _mining_hint_cooldown <= 0.0:
+				_mining_hint_cooldown = 1.5
+				hud.call("notify", "Эту породу %s не взять" % String(result.get("tool", "руками")))
+		"broken":
+			var got: Dictionary = result.get("drops", {})
+			if selected_id == &"handheld_drill":
+				_drill_charge = maxf(0.0, _drill_charge - 1.0)
+				if _drill_charge <= 0.0:
+					hud.call("notify", "Бур разряжен")
+			var lost := 0
+			for item_id: Variant in got:
+				lost += inventory.add(StringName(item_id), int(got[item_id]))
+			if lost > 0:
+				hud.call("notify", "Инвентарь полон — часть добычи потеряна")
+			_refresh_inventory_ui()
+			_dig_puff(w)
+
+
+# Трещины на блоке, который сейчас ломают. Без обратной связи удержание кнопки
+# ощущается как «ничего не происходит», и игрок отпускает раньше времени.
+func _draw() -> void:
+	if not gameplay_active or mining.fraction() <= 0.0:
+		return
+	var origin := mining.group
+
+	var rect := Rect2(
+		Vector2(origin.x * Core.CELL, origin.y * Core.CELL),
+		Vector2(Mining.GROUP * Core.CELL, Mining.GROUP * Core.CELL)
+	)
+	var done := mining.fraction()
+	draw_rect(rect, Color(0.0, 0.0, 0.0, 0.18 + 0.3 * done), true)
+	draw_rect(rect, Color(1.0, 0.86, 0.6, 0.35 + 0.45 * done), false, 1.0)
+	# полоска снизу блока — сколько осталось
+	var bar := Rect2(rect.position + Vector2(0, rect.size.y + 1.0), Vector2(rect.size.x * done, 1.6))
+	draw_rect(bar, Color(1.0, 0.78, 0.42, 0.9), true)
 
 
 func _dig_puff(at: Vector2) -> void:

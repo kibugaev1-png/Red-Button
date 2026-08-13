@@ -49,6 +49,11 @@ const ITEMS: Dictionary = {
 	&"machine_purifier": {"name": "Очиститель воды", "max_stack": 8, "type": &"machine"},
 	&"machine_fence": {"name": "Электрозабор", "max_stack": 50, "type": &"machine"},
 
+	# ---- инструменты ----
+	# Ручной бур лежит в руинах небоскрёбов уже заряженным: он ускоряет ломание
+	# вчетверо, и давать его на старте значило бы обесценить кирку.
+	&"handheld_drill": {"name": "Ручной бур", "max_stack": 1, "type": &"tool"},
+
 	# ---- оружие ----
 	&"bow": {"name": "Лук", "max_stack": 1, "type": &"bow"},
 	&"arrow": {"name": "Стрелы", "max_stack": 120, "type": &"ammo"},

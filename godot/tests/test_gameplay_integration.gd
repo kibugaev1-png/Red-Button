@@ -16,12 +16,18 @@ func _run() -> void:
 	game.call("_begin_game", false, false)
 	await process_frame
 
-	_expect(game.get("gameplay_entities").get_child_count() == 3,
-		"new game instantiates two crates and one world item")
+	# Ожидаемое число берём из самой спецификации, а не держим числом в тесте:
+	# иначе каждый добавленный в мир ящик ломает тест, который стережёт совсем
+	# другое — что сущности создаются ровно по описанию и не двоятся.
+	var spec: Dictionary = game.call("get_start_gameplay_spec")
+	var expected: int = (spec.get("crates", []) as Array).size() \
+		+ (spec.get("world_items", []) as Array).size()
+	_expect(game.get("gameplay_entities").get_child_count() == expected,
+		"new game instantiates every crate and world item from the spec (%d)" % expected)
 	_expect(game.get("enemies").get_child_count() == 1,
 		"new game instantiates one starter enemy")
 	game.call("reset_gameplay_state")
-	_expect(game.get("gameplay_entities").get_child_count() == 3,
+	_expect(game.get("gameplay_entities").get_child_count() == expected,
 		"repeated reset does not duplicate starter entities")
 	_expect(game.get("enemies").get_child_count() == 1,
 		"repeated reset does not duplicate starter enemy")
