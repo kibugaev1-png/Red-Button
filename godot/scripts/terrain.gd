@@ -365,7 +365,7 @@ func _layer_for(m: int) -> Array:
 		Core.GRASS: return [_layer_of.grass, 10]
 		Core.DIRT, Core.FARM: return [_layer_of.dirt, 12]
 		Core.CLAY: return [_layer_of.clay, 14]
-		Core.STONE, Core.COAL, Core.IRON, Core.COPPER: return [_layer_of.rock, 16]
+		Core.STONE, Core.COAL, Core.IRON, Core.COPPER, Core.GALENA, Core.SULFUR: return [_layer_of.rock, 16]
 		Core.CONCRETE, Core.BUILD_S, Core.BG_CONC, Core.GLASSW: return [_layer_of.concrete, 20]
 		Core.PLANK, Core.LADDER, Core.WALL_W, Core.FLOOR_W, Core.ROOF_W, \
 		Core.DOOR, Core.DOOR_OPEN, Core.BUILD_W, Core.BG_WOOD: return [_layer_of.wood, 8]
