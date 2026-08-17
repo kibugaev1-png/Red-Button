@@ -768,6 +768,19 @@ func _bind_input() -> void:
 			ev.physical_keycode = k
 			InputMap.action_add_event(a, ev)
 
+	# Tab отдаём инвентарю целиком.
+	#
+	# По умолчанию Tab у движка — это переход к следующему элементу интерфейса.
+	# Как только открытый инвентарь ставил фокус на слот, второй Tab уходил на
+	# перевод фокуса и до игры не доходил: инвентарь открывался и не закрывался.
+	# Фокус между слотами водят стрелки, отдельная клавиша для этого не нужна.
+	for action in [&"ui_focus_next", &"ui_focus_prev"]:
+		if not InputMap.has_action(action):
+			continue
+		for ev in InputMap.action_get_events(action):
+			if ev is InputEventKey and (ev.physical_keycode == KEY_TAB or ev.keycode == KEY_TAB):
+				InputMap.action_erase_event(action, ev)
+
 
 # Свечение. В 2D его даёт Environment, а пересветы приходят из шейдера породы:
 # освещённые кромки и стекло противогаза светят чуть выше единицы.
