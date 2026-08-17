@@ -99,25 +99,52 @@ func _draw() -> void:
 	draw_set_transform(Vector2.ZERO)
 
 
+# ПРОТИВОГАЗ, ЛЕЖАЩИЙ НА ЗЕМЛЕ.
+#
+# Раньше он был 18 пикселей высотой — крупнее головы самого героя (11), стоял
+# вертикально и смотрел единственным круглым стеклом прямо в камеру. Получался
+# не предмет, а циклоп, уставившийся на игрока.
+#
+# Теперь это вещь: вдвое меньше, брошена набок с наклоном, стёкол два — те же,
+# что у героя на лице, — а фильтр смотрит в сторону. Сразу читается, что на
+# земле лежит снаряжение, которое надо подобрать.
 func _draw_gasmask() -> void:
 	var rubber := Color(0.19, 0.21, 0.18)
 	var rubber_dark := Color(0.095, 0.105, 0.09)
 	var glass := Color(0.39, 0.52, 0.48)
+
+	# наклон: маска валяется, а не стоит по стойке смирно
+	draw_set_transform(Vector2(0.0, -1.0), 0.34, Vector2.ONE)
+
+	# корпус маски
 	draw_colored_polygon(PackedVector2Array([
-		Vector2(-8.0, -14.0), Vector2(-3.0, -18.0), Vector2(5.0, -17.0),
-		Vector2(9.0, -11.0), Vector2(8.0, -3.0), Vector2(3.0, 1.0),
-		Vector2(-4.0, 0.0), Vector2(-9.0, -6.0),
+		Vector2(-4.6, -7.4), Vector2(-1.4, -9.4), Vector2(3.0, -8.8),
+		Vector2(5.2, -5.4), Vector2(4.6, -1.4), Vector2(1.6, 0.6),
+		Vector2(-2.4, 0.2), Vector2(-5.0, -3.2),
 	]), rubber)
-	draw_circle(Vector2(3.0, -10.0), 5.0, rubber_dark)
-	draw_circle(Vector2(3.0, -10.0), 3.7, glass)
-	draw_circle(Vector2(1.8, -11.2), 1.1, Color(0.92, 0.96, 0.9, 0.7))
-	draw_arc(Vector2(3.0, -10.0), 5.0, 0.0, TAU, 20, Color(0.07, 0.08, 0.07), 1.2, true)
-	draw_rect(Rect2(-1.0, -3.5, 7.5, 7.0), Color(0.14, 0.16, 0.135))
-	for y in [-1.8, 0.3, 2.4]:
-		draw_line(Vector2(0.0, y), Vector2(5.6, y), Color(0.07, 0.08, 0.07), 0.9, true)
-	draw_line(Vector2(-7.0, -13.0), Vector2(-12.0, -16.0), rubber_dark, 2.0, true)
-	draw_line(Vector2(-8.0, -7.0), Vector2(-13.0, -5.0), rubber_dark, 1.7, true)
-	draw_line(Vector2(-5.5, -15.5), Vector2(1.0, -17.0), Color(0.82, 0.7, 0.42, 0.44), 1.0, true)
+
+	# дальнее стекло — частично за переносицей
+	draw_circle(Vector2(-1.1, -5.6), 1.7, rubber_dark)
+	draw_circle(Vector2(-1.1, -5.6), 1.25, glass * Color(0.8, 0.8, 0.8, 1.0))
+	# переносица
+	draw_line(Vector2(0.4, -7.0), Vector2(0.7, -3.8), rubber_dark, 1.3, true)
+	# ближнее стекло
+	draw_circle(Vector2(2.4, -5.2), 2.3, rubber_dark)
+	draw_circle(Vector2(2.4, -5.2), 1.75, glass)
+	draw_circle(Vector2(1.7, -5.9), 0.6, Color(0.92, 0.96, 0.9, 0.65))
+	draw_arc(Vector2(2.4, -5.2), 2.3, 0.0, TAU, 16, Color(0.07, 0.08, 0.07), 0.8, true)
+
+	# фильтр-коробка сбоку, а не под глазом
+	draw_rect(Rect2(1.2, -2.4, 4.4, 3.6), Color(0.14, 0.16, 0.135))
+	for y in [-1.4, 0.0]:
+		draw_line(Vector2(1.6, y), Vector2(5.2, y), Color(0.07, 0.08, 0.07), 0.7, true)
+
+	# обвисшие ремни
+	draw_line(Vector2(-4.2, -6.6), Vector2(-7.6, -8.0), rubber_dark, 1.4, true)
+	draw_line(Vector2(-4.6, -3.4), Vector2(-8.0, -2.2), rubber_dark, 1.2, true)
+	draw_line(Vector2(-3.0, -8.4), Vector2(0.6, -9.0), Color(0.82, 0.7, 0.42, 0.4), 0.8, true)
+
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _draw_bundle() -> void:

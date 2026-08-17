@@ -396,16 +396,37 @@ func _head(f: float, head: float, shoulder: float) -> void:
 	]), _c(MASK_D, 1.0))
 	draw_line(Vector2(-1.6 * f, head - 5.2), Vector2(3.0 * f, head - 4.8), _c(RIM, 0.85), 1.3)
 
-	# стекло: круглое, тёмное, с двумя бликами
-	var eye := Vector2(2.6 * f, head - 0.6)
-	draw_circle(eye, 3.5, _c(MASK_D, 0.8))
-	draw_circle(eye, 2.9, _c(LENS, 1.1))
-	draw_circle(eye + Vector2(-1.0 * f, -1.0), 1.15, Color(1, 1, 1, 0.6 * _tint.r + 0.2))
-	draw_circle(eye + Vector2(1.2 * f, 1.0), 0.55, Color(1, 1, 1, 0.28))
-	draw_arc(eye, 3.5, 0.0, TAU, 20, _c(MASK_D, 0.6), 1.1)
+	# СТЁКЛА.
+	#
+	# Раньше здесь было одно большое круглое стекло по центру лица — и человек
+	# читался циклопом, потому что круглый глаз в середине головы это и есть
+	# силуэт циклопа. У настоящего противогаза два стекла в отдельных обоймах,
+	# разделённых переносицей. В профиль дальнее стекло видно частично, и именно
+	# оно убирает «один глаз»: сразу понятно, что лицо повёрнуто.
+	var near_eye := Vector2(3.2 * f, head - 0.9)
+	var far_eye := Vector2(-0.5 * f, head - 1.4)
 
-	# фильтр-коробка под стеклом и гофрированный шланг к груди
-	var flt := Vector2(1.4 * f, head + 4.4)
+	# дальнее стекло: меньше, темнее, уходит за переносицу
+	draw_set_transform(far_eye, 0.0, Vector2(1.0, 0.86))
+	draw_circle(Vector2.ZERO, 2.3, _c(MASK_D, 0.7))
+	draw_circle(Vector2.ZERO, 1.8, _c(LENS, 0.72))
+	draw_circle(Vector2(-0.5 * f, -0.5), 0.6, Color(1, 1, 1, 0.22))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+	# переносица между обоймами
+	draw_line(Vector2(1.1 * f, head - 2.6), Vector2(1.5 * f, head + 1.4), _c(MASK_D, 1.15), 1.8)
+
+	# ближнее стекло: чуть овальное, с обоймой и двумя бликами
+	draw_set_transform(near_eye, 0.0, Vector2(1.0, 0.88))
+	draw_circle(Vector2.ZERO, 3.0, _c(MASK_D, 0.85))
+	draw_circle(Vector2.ZERO, 2.4, _c(LENS, 1.12))
+	draw_circle(Vector2(-0.9 * f, -0.9), 0.95, Color(1, 1, 1, 0.55 * _tint.r + 0.2))
+	draw_circle(Vector2(1.0 * f, 0.9), 0.45, Color(1, 1, 1, 0.26))
+	draw_arc(Vector2.ZERO, 3.0, 0.0, TAU, 18, _c(MASK_D, 0.55), 1.0)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+	# фильтр-коробка у рта и гофрированный шланг к груди
+	var flt := Vector2(2.0 * f, head + 4.2)
 	draw_colored_polygon(PackedVector2Array([
 		flt + Vector2(-2.2 * f, -1.6), flt + Vector2(2.4 * f, -1.6),
 		flt + Vector2(2.0 * f, 2.2), flt + Vector2(-1.8 * f, 2.2),
