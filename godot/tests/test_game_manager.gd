@@ -22,12 +22,36 @@ func _run() -> void:
 	var state := {
 		"player": {"x": 128.5, "y": 42.25, "hp": 73.0, "food": 201.0, "water": 155.0, "rad": 4.0, "mask": false},
 		"world": {"day": 0.35, "zoom": 1.8},
+		"gameplay": {
+			"inventory": {"selected": 2, "slots": [{"id": "bandage", "count": 3}]},
+			"entities": {"opened_crates": ["start_left"]},
+		},
 	}
 	_expect(manager.call("save_state", state), "valid state is written")
 	var loaded: Dictionary = manager.call("load_state")
 	_expect(is_equal_approx(float(loaded.player.x), 128.5), "position round-trips")
 	_expect(loaded.player.mask == false, "boolean state round-trips")
+	_expect(int(loaded.version) == 2, "current save schema is version 2")
+	_expect(int(loaded.gameplay.inventory.selected) == 2, "gameplay state round-trips")
+
+	# Версия 1 — сохранение уже опубликованной Godot-оболочки. После добавления
+	# игрового цикла оно должно получить безопасные значения по умолчанию, а не
+	# исчезнуть из меню «Продолжить».
+	var legacy := {
+		"version": 1,
+		"player": {"x": 9.0, "y": 11.0, "hp": 90.0, "food": 220.0, "water": 210.0, "rad": 0.0, "mask": true},
+		"world": {"day": 0.5, "zoom": 1.6, "terrain_changes": []},
+	}
 	var file := FileAccess.open(TEST_SAVE, FileAccess.WRITE)
+	file.store_string(JSON.stringify(legacy))
+	file.close()
+	loaded = manager.call("load_state")
+	_expect(int(loaded.get("version", 0)) == 2, "version 1 save migrates to version 2")
+	_expect(loaded.get("gameplay", null) is Dictionary, "migration supplies gameplay section")
+	_expect(loaded.gameplay.get("inventory", null) is Dictionary, "migration supplies inventory defaults")
+	_expect(loaded.gameplay.inventory.get("slots", []).size() == 30, "migration supplies 30 valid inventory slots")
+
+	file = FileAccess.open(TEST_SAVE, FileAccess.WRITE)
 	file.store_string("{ definitely broken")
 	file.close()
 	_expect(manager.call("load_state").is_empty(), "malformed saves are rejected")

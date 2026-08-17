@@ -45,7 +45,12 @@ const BUILD_S := 26
 const BUILD_M := 27
 const GLASSW := 28
 const BG_CONC := 29
-const MAT_COUNT := 30
+# Руды под электричество. Галенит даёт свинец для пластин аккумулятора, сера —
+# серную кислоту для электролита. Добавлены в конец: id пород уходят в текстуру
+# как есть, и сдвиг существующих сломал бы старые сохранения.
+const GALENA := 30
+const SULFUR := 31
+const MAT_COUNT := 32
 
 # Вид породы для шейдера: он решает, какую процедурную деталь рисовать.
 const K_PLAIN := 0
@@ -93,6 +98,8 @@ const MATS := [
 	{"name": "Металлическая постройка", "c": Color8(110, 116, 122), "var": 8.0, "hard": 3.0, "drop": "", "solid": true, "kind": K_METAL, "ore": Color8(0, 0, 0)},
 	{"name": "Окно", "c": Color8(96, 122, 132), "var": 10.0, "hard": 0.3, "drop": "", "solid": true, "kind": K_GLASS, "ore": Color8(0, 0, 0)},
 	{"name": "Внутренняя стена", "c": Color8(58, 58, 60), "var": 8.0, "hard": 0.5, "drop": "", "solid": false, "kind": K_BG, "ore": Color8(0, 0, 0)},
+	{"name": "Галенит", "c": Color8(88, 90, 98), "var": 16.0, "hard": 1.8, "drop": "galena_ore", "solid": true, "kind": K_ORE, "ore": Color8(170, 172, 182)},
+	{"name": "Сера", "c": Color8(126, 116, 58), "var": 20.0, "hard": 0.9, "drop": "sulfur", "solid": true, "kind": K_PLAIN, "ore": Color8(0, 0, 0)},
 ]
 
 # ---- локации ----

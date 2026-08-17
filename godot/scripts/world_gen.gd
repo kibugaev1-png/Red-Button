@@ -84,14 +84,36 @@ static func generate(seed_v: int) -> Dictionary:
 			i += Core.WW * 2
 
 	# ---- рудные жилы ----
+	# Ключ "zones" ограничивает жилу локациями. Галенит и сера нужны только под
+	# электричество, и разбрасывать их по всему миру незачем: если свинец лежит
+	# под ногами на старте, шахта перестаёт быть местом, куда есть смысл идти.
 	var veins := [
-		{"m": Core.COAL, "count": 220, "min_y": 16, "len": 26},
-		{"m": Core.IRON, "count": 150, "min_y": 34, "len": 20},
-		{"m": Core.COPPER, "count": 120, "min_y": 26, "len": 18},
+		{"m": Core.COAL, "count": 220, "min_y": 16, "len": 26, "zones": []},
+		{"m": Core.IRON, "count": 150, "min_y": 34, "len": 20, "zones": []},
+		{"m": Core.COPPER, "count": 120, "min_y": 26, "len": 18, "zones": []},
+		{"m": Core.GALENA, "count": 90, "min_y": 48, "len": 16, "zones": ["mine"]},
+		{"m": Core.SULFUR, "count": 70, "min_y": 8, "len": 12, "zones": ["mine", "waste"]},
 	]
 	for v in veins:
+		var only: Array = v.zones
 		for _i in int(v.count):
+			# Координату берём сразу внутри разрешённой локации, а не наугад по
+			# всему миру с отбраковкой: шахта занимает десятую часть карты, и
+			# отбраковка съела бы девять жил из десяти.
 			var x := rng.randi_range(0, Core.WW - 1)
+			if not only.is_empty():
+				var zone := _zone_by_id(String(only[rng.randi_range(0, only.size() - 1)]))
+				if zone.is_empty():
+					continue
+				# Отступ от краёв на длину жилы. Жила блуждает по клетке за шаг,
+				# и начатая у самой границы вылезает в соседнюю локацию — тогда
+				# свинец находится вне шахты и идти в неё становится незачем.
+				var margin: int = 6 + int(v.len) + 3
+				var x0: int = int(zone.x0) + margin
+				var x1: int = int(zone.x1) - margin
+				if x1 <= x0:
+					continue
+				x = rng.randi_range(x0, x1)
 			var span: int = Core.WH - surface[x] - int(v.min_y) - 6
 			if span <= 1:
 				continue
@@ -130,10 +152,22 @@ static func generate(seed_v: int) -> Dictionary:
 # Поверхность не должна быть ровной линией: раскидываем валуны, гравийные
 # наносы, обломки бетона и сухие кусты. Именно эта мелочь отличает землю от
 # закрашенной плиты, особенно рядом с фотографическим фоном.
+static func _zone_by_id(id: String) -> Dictionary:
+	for z in Core.ZONES:
+		if String(z.id) == id:
+			return z
+	return {}
+
+
 static func _scatter_surface(data: PackedByteArray, surface: PackedInt32Array, rng: RandomNumberGenerator) -> void:
 	var x := 4
-	while x < Core.WW - 4:
+	while true:
+		# Шаг делается до проверки границы, поэтому проверять надо после него:
+		# иначе последний шаг вылетает за массив поверхности. Ошибка зависела от
+		# последовательности случайных чисел и потому годами не проявлялась.
 		x += rng.randi_range(6, 26)
+		if x >= Core.WW - 4:
+			break
 		var top: int = surface[x]
 		var roll := rng.randf()
 		if roll < 0.3:

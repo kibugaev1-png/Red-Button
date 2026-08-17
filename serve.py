@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Сервер игры. Корень страницы — одностраничная сборка, кэш отключён.
+"""Локальный сервер Godot Web. Корень перенаправляется в папку web/.
 
 Запуск:  python3 serve.py [порт]
 Папку определяем по расположению этого файла, а не по текущей рабочей:
@@ -13,18 +13,28 @@ import pathlib
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 4986
 ROOT = pathlib.Path(__file__).resolve().parent
-BUNDLE = 'Красная кнопка v2.html'
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
-    def translate_path(self, path):
-        clean = urllib.parse.unquote(path.split('?', 1)[0].split('#', 1)[0])
-        if clean in ('/', '/index.html'):
-            return str(ROOT / BUNDLE)
-        return super().translate_path(path)
+    def _redirect_entrypoint(self):
+        clean = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
+        if clean not in ('/', '/index.html'):
+            return False
+        self.send_response(302)
+        self.send_header('Location', '/web/')
+        self.end_headers()
+        return True
+
+    def do_GET(self):
+        if not self._redirect_entrypoint():
+            super().do_GET()
+
+    def do_HEAD(self):
+        if not self._redirect_entrypoint():
+            super().do_HEAD()
 
     def guess_type(self, path):
         # без явной кодировки браузер читает русский текст как кракозябры

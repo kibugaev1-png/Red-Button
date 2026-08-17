@@ -1,6 +1,12 @@
 # Красная кнопка
 
-Godot 4.7 version lives in `godot/`; preserve the browser version unless a task explicitly targets it.
+The canonical game is the Godot 4.7 project in `godot/`. Its generated Web
+release lives in `web/`; GitHub Pages publishes `main` from the repository root,
+and the root entry point opens that Godot Web build.
+
+The old `js/` game and `Красная кнопка v2.html` are legacy artifacts. Preserve
+them unless a task explicitly removes them, but never use them as the current
+public game or GitHub Pages entry point.
 
 ## GodotPrompter
 
