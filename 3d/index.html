@@ -1,0 +1,1647 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Красная кнопка — 3D</title>
+<!--
+  ОТДЕЛЬНАЯ ТРЁХМЕРНАЯ ВЕРСИЯ, ОДИН ФАЙЛ.
+
+  Здесь нет ни Godot, ни библиотек, ни картинок с диска: весь трёхмерный движок
+  написан ниже на WebGL2 — генерация мира, сборка геометрии по кускам, небо,
+  освещение, физика, копание. Файл можно открыть двойным щелчком с любого места
+  и без интернета: он ни к чему не обращается снаружи.
+
+  Мир — тот же, что в основной игре: частица породы 8 пикселей, мир 8000x720
+  частиц, те же породы и локации, та же скорость шага (1,65 частицы за кадр) и
+  тот же прыжок. Разница только в том, что порода здесь настоящая геометрия с
+  толщиной, а не рисунок, поэтому земля читается землёй, а не срезом.
+-->
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0c0e; }
+  body { font: 13px/1.4 "Segoe UI", system-ui, sans-serif; color: #d8d2c4; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+
+  .panel {
+    position: absolute; background: rgba(10, 12, 14, .62);
+    border: 1px solid rgba(190, 170, 120, .22); border-radius: 4px;
+    padding: 7px 10px; backdrop-filter: blur(3px);
+    text-shadow: 0 1px 2px #000;
+  }
+  #top { top: 12px; left: 12px; min-width: 210px; }
+  #zone { color: #e8d9a8; font-weight: 600; letter-spacing: .4px; }
+  #clock { color: #9aa0a6; font-size: 11px; margin-top: 2px; }
+
+  .bar { height: 8px; border-radius: 2px; background: rgba(0,0,0,.5); margin-top: 6px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; transition: width .15s linear; }
+  #hpb > i { background: linear-gradient(90deg, #8f2b28, #d4544a); }
+  #stb > i { background: linear-gradient(90deg, #6b5a26, #cbb35a); }
+
+  #stat { top: 12px; right: 12px; text-align: right; color: #8d949a; font-size: 11px; font-variant-numeric: tabular-nums; }
+  #stat b { color: #cfd6dc; font-weight: 600; }
+
+  #bag { bottom: 12px; left: 12px; display: flex; gap: 14px; align-items: center; }
+  #bag span { color: #b9b1a0; }
+  #bag i { color: #e8d9a8; font-style: normal; font-weight: 600; }
+
+  #keys { bottom: 12px; right: 12px; color: #7e858b; font-size: 11px; line-height: 1.7; text-align: right; }
+  #keys kbd {
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14);
+    border-radius: 3px; padding: 0 4px; font: inherit; color: #cbd2d8;
+  }
+
+  #load {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px;
+    background: radial-gradient(ellipse at 50% 40%, #1b1d1c 0%, #08090a 70%);
+    z-index: 10; transition: opacity .5s;
+  }
+  #load h1 { font-size: 26px; font-weight: 600; letter-spacing: 5px; color: #d8ccae; }
+  #load h1 em { color: #c4463c; font-style: normal; }
+  #load p { color: #7d8288; font-size: 12px; letter-spacing: 1px; }
+  #pbar { width: 280px; height: 3px; background: rgba(255,255,255,.08); border-radius: 2px; overflow: hidden; }
+  #pbar > i { display: block; height: 100%; width: 0; background: #b2452f; transition: width .2s; }
+  #err { color: #d4544a; max-width: 520px; text-align: center; line-height: 1.6; display: none; }
+
+  #dead {
+    position: fixed; inset: 0; display: none; flex-direction: column; gap: 14px;
+    align-items: center; justify-content: center; background: rgba(20, 4, 4, .72); z-index: 9;
+  }
+  #dead h2 { font-size: 30px; letter-spacing: 6px; color: #d4544a; font-weight: 600; }
+  #dead button {
+    pointer-events: auto; font: inherit; color: #e6dcc4; cursor: pointer;
+    background: #2a2422; border: 1px solid #6a5a3a; border-radius: 4px; padding: 9px 22px;
+  }
+  #dead button:hover { background: #3a3128; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="hud">
+  <div class="panel" id="top">
+    <div id="zone">—</div>
+    <div id="clock">—</div>
+    <div class="bar" id="hpb"><i style="width:100%"></i></div>
+    <div class="bar" id="stb"><i style="width:100%"></i></div>
+  </div>
+  <div class="panel" id="stat">
+    <b id="fps">—</b> к/с · <b id="chunks">0</b> кусков<br>
+    <span id="pos">—</span>
+  </div>
+  <div class="panel" id="bag">
+    <span>Земля <i id="i-dirt">0</i></span>
+    <span>Камень <i id="i-stone">0</i></span>
+    <span>Дерево <i id="i-wood">0</i></span>
+    <span>Руда <i id="i-ore">0</i></span>
+    <span>Убито <i id="i-kill">0</i></span>
+  </div>
+  <div class="panel" id="keys">
+    <kbd>A</kbd> <kbd>D</kbd> идти · <kbd>Shift</kbd> бежать · <kbd>Space</kbd> прыжок<br>
+    <kbd>ЛКМ</kbd> копать / ударить · <kbd>ПКМ</kbd> поставить землю<br>
+    <kbd>колесо</kbd> отъехать · <kbd>1</kbd>…<kbd>6</kbd> локация · <kbd>F</kbd> во весь экран
+  </div>
+</div>
+
+<div id="dead">
+  <h2>ТЫ УМЕР</h2>
+  <button onclick="Game.respawn()">Начать заново</button>
+</div>
+
+<div id="load">
+  <h1>КРАСНАЯ <em>КНОПКА</em></h1>
+  <p id="ptxt">поднимаю мир…</p>
+  <div id="pbar"><i></i></div>
+  <div id="err"></div>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================================
+   1. МИР В ЦИФРАХ. Значения совпадают с основной игрой, чтобы мир был тот же.
+   ========================================================================== */
+const CELL   = 8;        // пикселей в частице породы
+const WW     = 8000;     // ширина мира в частицах
+const WH     = 720;      // высота мира в частицах
+const GRAV   = 0.42;     // за кадр при 60 к/с
+const SURF   = 520;      // средний уровень земли в частицах
+const STEP   = 1 / 60;   // шаг физики: скорости заданы на кадр, а не на секунду
+
+const SCALE = 0.25;              // метров в одной частице породы
+const P2M   = SCALE / CELL;      // метров в одном пикселе мира
+const HD    = 4.6;               // половина толщины плиты мира в метрах
+
+// породы: id -> [имя, цвет, вид, цвет вкраплений, твёрдость, что даёт]
+const AIR=0, GRASS=1, DIRT=2, CLAY=3, STONE=4, COAL=5, IRON=6, COPPER=7,
+      TRUNK=8, LEAF=9, CONCRETE=10, PLANK=11, WATER=12, REBAR=14, ASH=15,
+      METAL=22, GLASSW=28, GALENA=30, SULFUR=31;
+
+const K_PLAIN=0, K_GRASS=1, K_CRACK=2, K_ORE=3, K_WOOD=4, K_BARK=5,
+      K_LEAF=6, K_METAL=7, K_GLASS=8, K_WATER=9;
+
+const MATS = [];
+function mat(id, name, col, kind, ore, hard, drop) {
+  MATS[id] = { name, col, kind, ore: ore || [0,0,0], hard, drop: drop || "" };
+}
+mat(AIR,      "Воздух",        [0,0,0],             K_PLAIN, null, 0,   "");
+mat(GRASS,    "Трава",         [.32,.36,.19],       K_GRASS, null, .35, "dirt");
+mat(DIRT,     "Земля",         [.26,.19,.13],       K_PLAIN, null, .40, "dirt");
+mat(CLAY,     "Глина",         [.39,.26,.18],       K_PLAIN, null, .60, "dirt");
+mat(STONE,    "Камень",        [.30,.31,.33],       K_CRACK, null, 1.1, "stone");
+mat(COAL,     "Уголь",         [.29,.29,.31],       K_ORE, [.10,.10,.12], 1.3, "ore");
+mat(IRON,     "Железная руда", [.38,.36,.36],       K_ORE, [.64,.41,.26], 1.7, "ore");
+mat(COPPER,   "Медная руда",   [.37,.38,.37],       K_ORE, [.36,.58,.47], 1.6, "ore");
+mat(TRUNK,    "Ствол",         [.28,.20,.14],       K_BARK, null, .70, "wood");
+mat(LEAF,     "Листва",        [.24,.33,.16],       K_LEAF, null, .20, "wood");
+mat(CONCRETE, "Бетон",         [.46,.45,.43],       K_CRACK, null, 2.2, "stone");
+mat(PLANK,    "Доски",         [.49,.37,.24],       K_WOOD, null, .50, "wood");
+mat(WATER,    "Вода",          [.13,.28,.31],       K_WATER, null, 0,  "");
+mat(13,       "Грядка",        [.24,.17,.12],       K_PLAIN, null, .3,  "dirt");
+mat(REBAR,    "Арматура",      [.41,.29,.23],       K_METAL, null, 2.6, "ore");
+mat(ASH,      "Пепел",         [.30,.29,.28],       K_PLAIN, null, .25, "");
+for (let i = 16; i < 32; i++) mat(i, "Порода", [.4,.4,.4], K_PLAIN, null, 1, "stone");
+mat(METAL,    "Профлист",      [.45,.46,.47],       K_METAL, null, 2.0, "ore");
+mat(GLASSW,   "Окно",          [.36,.47,.51],       K_GLASS, null, .30, "");
+mat(GALENA,   "Галенит",       [.34,.35,.38],       K_ORE, [.67,.68,.72], 1.8, "ore");
+mat(SULFUR,   "Сера",          [.49,.45,.22],       K_PLAIN, null, .90, "ore");
+
+const SOLID = new Uint8Array(32).fill(1);
+SOLID[AIR] = 0; SOLID[TRUNK] = 0; SOLID[LEAF] = 0; SOLID[WATER] = 0;
+
+// локации: у каждой свой рельеф и своё небо
+const ZONES = [
+  { id:"dead",   name:"Мёртвая зона",        x0:200,  x1:1000, amp:1.5, sky:[[.42,.30,.24],[.62,.48,.36],[.20,.16,.14]] },
+  { id:"city",   name:"Мирный город",        x0:1500, x1:2300, amp:0.0, sky:[[.32,.44,.58],[.66,.72,.76],[.26,.30,.34]] },
+  { id:"waste",  name:"Пустошь",             x0:2800, x1:3700, amp:1.1, sky:[[.45,.38,.26],[.76,.62,.38],[.28,.23,.17]] },
+  { id:"forest", name:"Лес",                 x0:4200, x1:5000, amp:1.3, sky:[[.30,.42,.46],[.60,.68,.62],[.18,.24,.20]] },
+  { id:"mine",   name:"Шахта",               x0:5500, x1:6300, amp:1.8, sky:[[.34,.32,.32],[.56,.52,.48],[.20,.19,.18]] },
+  { id:"towers", name:"Руины небоскрёбов",   x0:6800, x1:7700, amp:1.2, sky:[[.36,.36,.42],[.58,.58,.62],[.22,.22,.26]] },
+];
+const GAP = { id:"gap", name:"Ничейная земля", x0:0, x1:0, amp:1.2, sky:[[.38,.36,.32],[.64,.60,.52],[.24,.22,.20]] };
+function zoneAtCell(cx) {
+  for (const z of ZONES) if (cx >= z.x0 && cx <= z.x1) return z;
+  return GAP;
+}
+
+/* ============================================================================
+   2. ШУМ. Свой, чтобы файл ни от чего не зависел.
+   ========================================================================== */
+function hash2(x, y) {
+  let h = x * 374761393 + y * 668265263;
+  h = (h ^ (h >> 13)) * 1274126177;
+  return ((h ^ (h >> 16)) & 0x7fffffff) / 0x7fffffff;
+}
+function noise1(x) {
+  const i = Math.floor(x), f = x - i, s = f * f * (3 - 2 * f);
+  return hash2(i, 0) * (1 - s) + hash2(i + 1, 0) * s;
+}
+function noise2(x, y) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const fx = x - ix, fy = y - iy;
+  const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+  const a = hash2(ix, iy),     b = hash2(ix + 1, iy);
+  const c = hash2(ix, iy + 1), d = hash2(ix + 1, iy + 1);
+  return (a * (1 - sx) + b * sx) * (1 - sy) + (c * (1 - sx) + d * sx) * sy;
+}
+function fbm2(x, y, oct) {
+  let s = 0, a = 0.5, f = 1;
+  for (let i = 0; i < oct; i++) { s += a * noise2(x * f, y * f); a *= 0.5; f *= 2; }
+  return s;
+}
+let rngState = 1337;
+function rnd() {
+  rngState = (rngState * 1664525 + 1013904223) >>> 0;
+  return rngState / 4294967296;
+}
+function rndInt(a, b) { return a + Math.floor(rnd() * (b - a + 1)); }
+
+/* ============================================================================
+   3. МИР. Один байт на частицу породы плюс один байт запечённого света неба.
+   ========================================================================== */
+const World = {
+  data: null, light: null, top: null, frontZ: null,
+
+  cell(cx, cy) {
+    if (cx < 0 || cx >= WW || cy < 0 || cy >= WH) return cy >= WH ? STONE : AIR;
+    return this.data[cy * WW + cx];
+  },
+  solid(cx, cy) {
+    if (cy >= WH) return true;
+    if (cx < 0 || cx >= WW || cy < 0) return false;
+    return SOLID[this.data[cy * WW + cx]] === 1;
+  },
+  lightAt(cx, cy) {
+    if (cx < 0 || cx >= WW || cy < 0) return 255;
+    if (cy >= WH) return 0;
+    return this.light[cy * WW + cx];
+  },
+  set(cx, cy, m) {
+    if (cx < 0 || cx >= WW || cy < 0 || cy >= WH) return;
+    this.data[cy * WW + cx] = m;
+  },
+
+  // ---- рельеф: высота земли в каждом столбце ----
+  height(cx) {
+    const z = zoneAtCell(cx);
+    const big  = (noise1(cx * 0.0021) - 0.5) * 62 * z.amp;
+    const mid  = (noise1(cx * 0.0093) - 0.5) * 22 * z.amp;
+    const fine = (noise1(cx * 0.041)  - 0.5) * 6  * z.amp;
+    return Math.round(SURF + big + mid + fine);
+  },
+
+  generate(onProgress, done) {
+    this.data  = new Uint8Array(WW * WH);
+    this.light = new Uint8Array(WW * WH);
+    this.top   = new Int32Array(WW);
+    // Толщина плиты гуляет по столбцам. Без этого передний край мира — ровная
+    // стена, и вся картинка читается как разрез, а не как земля.
+    this.frontZ = new Float32Array(WW);
+    for (let x = 0; x < WW; x++) {
+      this.frontZ[x] = HD * (0.42 + 0.58 * fbm2(x * 0.013, 7.3, 3));
+    }
+
+    const stages = [
+      ["насыпаю породу…",   () => this._rock()],
+      ["рою пещеры…",       () => this._caves()],
+      ["прячу руду…",       () => this._ores()],
+      ["сажаю лес…",        () => this._forest()],
+      ["ставлю руины…",     () => this._ruins()],
+      ["зажигаю солнце…",   () => this._bakeLight()],
+    ];
+    let i = 0;
+    const tick = () => {
+      if (i >= stages.length) { done(); return; }
+      onProgress(stages[i][0], i / stages.length);
+      stages[i][1]();
+      i++;
+      setTimeout(tick, 0);
+    };
+    tick();
+  },
+
+  _rock() {
+    for (let cx = 0; cx < WW; cx++) {
+      const h = this.height(cx);
+      this.top[cx] = h;
+      const soil  = 4 + Math.floor(noise1(cx * 0.03) * 7);
+      const clayD = soil + 8 + Math.floor(noise1(cx * 0.02 + 40) * 12);
+      const zone  = zoneAtCell(cx);
+      const bare  = zone.id === "dead" || zone.id === "waste";
+      for (let cy = h; cy < WH; cy++) {
+        const d = cy - h;
+        let m;
+        if (d === 0)        m = bare ? DIRT : GRASS;
+        else if (d < soil)  m = DIRT;
+        else if (d < clayD) m = CLAY;
+        else                m = STONE;
+        this.data[cy * WW + cx] = m;
+      }
+      if (bare && rnd() < 0.06) this.data[(h - 1) * WW + cx] = ASH;
+    }
+  },
+
+  _caves() {
+    // Пещеры двумя слоями шума: крупные залы и узкие ходы.
+    for (let cy = SURF - 30; cy < WH - 4; cy++) {
+      const row = cy * WW;
+      for (let cx = 4; cx < WW - 4; cx++) {
+        if (this.data[row + cx] === AIR) continue;
+        const h = this.top[cx];
+        if (cy < h + 6) continue;
+        const n1 = fbm2(cx * 0.018, cy * 0.030, 3);
+        if (n1 > 0.615) { this.data[row + cx] = AIR; continue; }
+        const n2 = fbm2(cx * 0.055 + 90, cy * 0.055 + 30, 2);
+        if (n2 > 0.735 && cy > h + 24) this.data[row + cx] = AIR;
+      }
+    }
+  },
+
+  _ores() {
+    // Каждая руда живёт на своей глубине и своим шумом — жилами, а не крошкой.
+    const veins = [
+      [COAL,   0.019, 0.662, 8,   140],
+      [IRON,   0.023, 0.686, 26,  190],
+      [COPPER, 0.026, 0.694, 34,  170],
+      [GALENA, 0.029, 0.716, 52,  200],
+      [SULFUR, 0.033, 0.722, 20,  120],
+    ];
+    for (const [m, freq, thr, d0, d1] of veins) {
+      const off = m * 37;
+      for (let cx = 0; cx < WW; cx++) {
+        const h = this.top[cx];
+        const y0 = Math.min(WH - 2, h + d0), y1 = Math.min(WH - 2, h + d1);
+        for (let cy = y0; cy < y1; cy++) {
+          const idx = cy * WW + cx;
+          if (this.data[idx] !== STONE) continue;
+          if (fbm2(cx * freq + off, cy * freq * 1.6 + off, 3) > thr) this.data[idx] = m;
+        }
+      }
+    }
+  },
+
+  // ЛЕС. Деревья через каждые 3-7 частиц, три яруса по высоте, кроны широкие
+  // и сросшиеся, ствол 2-3 частицы с расширением у корня, подлесок по всей земле.
+  _forest() {
+    const zone = ZONES.find(z => z.id === "forest");
+    let x = zone.x0 + 4;
+    while (x < zone.x1 - 4) {
+      x += rndInt(3, 7);
+      const h = this.top[x];
+      const t = rnd();
+      const hgt = t < 0.32 ? rndInt(18, 30) : (t < 0.78 ? rndInt(34, 52) : rndInt(56, 78));
+      const wide = hgt > 50 ? 3 : 2;
+      // ствол
+      for (let cy = h - 1; cy > h - hgt; cy--) {
+        const flare = cy > h - 5 ? 1 : 0;
+        for (let dx = -Math.floor(wide / 2) - flare; dx <= Math.floor(wide / 2) + flare; dx++) {
+          this.set(x + dx, cy, TRUNK);
+        }
+      }
+      // крона: три-четыре сросшихся кома
+      const cyTop = h - hgt;
+      const blobs = hgt > 50 ? 4 : 3;
+      for (let b = 0; b < blobs; b++) {
+        const bx = x + rndInt(-6, 6);
+        const by = cyTop + Math.floor(b * hgt * 0.11) + rndInt(-3, 3);
+        const r  = rndInt(6, 11);
+        for (let dy = -r; dy <= r; dy++) {
+          for (let dx = -r - 2; dx <= r + 2; dx++) {
+            const q = (dx * dx) / ((r + 2) * (r + 2)) + (dy * dy) / (r * r);
+            if (q > 1) continue;
+            if (q > 0.72 && rnd() < 0.45) continue;
+            const cx = bx + dx, cy = by + dy;
+            if (cy < 0 || this.cell(cx, cy) !== AIR) continue;
+            this.set(cx, cy, LEAF);
+          }
+        }
+      }
+    }
+    // подлесок и кусты
+    for (let cx = zone.x0; cx < zone.x1; cx++) {
+      const h = this.top[cx];
+      if (rnd() < 0.55 && this.cell(cx, h - 1) === AIR) {
+        const bh = rndInt(1, 4);
+        for (let k = 1; k <= bh; k++) this.set(cx, h - k, LEAF);
+      }
+    }
+  },
+
+  _ruins() {
+    for (const zone of ZONES) {
+      if (zone.id !== "towers" && zone.id !== "city" && zone.id !== "dead") continue;
+      const tall = zone.id === "towers";
+      let x = zone.x0 + 20;
+      while (x < zone.x1 - 40) {
+        const w = tall ? rndInt(22, 40) : rndInt(14, 26);
+        const hgt = tall ? rndInt(60, 150) : rndInt(16, 34);
+        const base = this.top[x];
+        const broken = tall ? rndInt(0, Math.floor(hgt * 0.4)) : 0;
+        for (let dx = 0; dx < w; dx++) {
+          const colTop = base - hgt + Math.floor(broken * noise1((x + dx) * 0.2));
+          for (let cy = colTop; cy < base; cy++) {
+            const inner = dx > 1 && dx < w - 2;
+            const floorRow = ((base - cy) % 9) === 0;
+            let m = CONCRETE;
+            if (inner && !floorRow) {
+              // окна по фасаду, кое-где выбитые
+              const win = ((base - cy) % 9) > 2 && (dx % 5) > 1;
+              m = win ? (rnd() < 0.45 ? AIR : GLASSW) : AIR;
+            }
+            if (m === CONCRETE && rnd() < 0.05) m = REBAR;
+            if (cy >= 0 && cy < WH) {
+              if (m !== AIR || this.cell(x + dx, cy) !== AIR) this.set(x + dx, cy, m);
+            }
+          }
+        }
+        // обломки у подножия
+        for (let dx = -6; dx < w + 6; dx++) {
+          if (rnd() < 0.4) {
+            const cx = x + dx, hh = this.top[cx];
+            for (let k = 0; k < rndInt(1, 3); k++) this.set(cx, hh - 1 - k, rnd() < 0.6 ? CONCRETE : ASH);
+          }
+        }
+        x += w + rndInt(18, 60);
+      }
+    }
+  },
+
+  // Свет неба печём сверху вниз по столбцам: он же даёт мягкую темноту в
+  // пещерах и в тоннелях, которые игрок прокопает сам.
+  _bakeLight() {
+    for (let cx = 0; cx < WW; cx++) {
+      let l = 255;
+      for (let cy = 0; cy < WH; cy++) {
+        const idx = cy * WW + cx;
+        this.light[idx] = l;
+        const m = this.data[idx];
+        if (m === AIR)        l *= 1.0;
+        else if (m === LEAF)  l *= 0.985;
+        else if (m === WATER) l *= 0.96;
+        else if (m === GLASSW) l *= 0.97;
+        else                  l *= 0.86;
+        if (l < 8) { for (let k = cy + 1; k < WH; k++) this.light[k * WW + cx] = 8; break; }
+      }
+    }
+  },
+
+  relight(cx) {
+    if (cx < 0 || cx >= WW) return;
+    let l = 255, newTop = WH;
+    for (let cy = 0; cy < WH; cy++) {
+      const idx = cy * WW + cx;
+      this.light[idx] = l;
+      const m = this.data[idx];
+      if (m !== AIR && newTop === WH && SOLID[m]) newTop = cy;
+      if (m === AIR)        l *= 1.0;
+      else if (m === LEAF)  l *= 0.985;
+      else if (m === WATER) l *= 0.96;
+      else if (m === GLASSW) l *= 0.97;
+      else                  l *= 0.86;
+      if (l < 8) l = 8;
+    }
+    this.top[cx] = newTop;
+  },
+
+  surfacePx(px) {
+    const cx = Math.max(0, Math.min(WW - 1, Math.floor(px / CELL)));
+    let cy = Math.max(0, this.top[cx] - 40);
+    while (cy < WH && !this.solid(cx, cy)) cy++;
+    return cy * CELL;
+  },
+};
+
+/* ============================================================================
+   4. МАТРИЦЫ. Ровно столько, сколько нужно камере.
+   ========================================================================== */
+function m4ident() { return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]); }
+function m4mul(a, b, out) {
+  out = out || new Float32Array(16);
+  for (let c = 0; c < 4; c++) {
+    for (let r = 0; r < 4; r++) {
+      out[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] +
+                       a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3];
+    }
+  }
+  return out;
+}
+function m4persp(fovy, aspect, near, far) {
+  const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far);
+  return new Float32Array([
+    f / aspect, 0, 0, 0,
+    0, f, 0, 0,
+    0, 0, (far + near) * nf, -1,
+    0, 0, 2 * far * near * nf, 0,
+  ]);
+}
+function m4look(eye, at, up) {
+  let zx = eye[0]-at[0], zy = eye[1]-at[1], zz = eye[2]-at[2];
+  let l = Math.hypot(zx, zy, zz); zx/=l; zy/=l; zz/=l;
+  let xx = up[1]*zz - up[2]*zy, xy = up[2]*zx - up[0]*zz, xz = up[0]*zy - up[1]*zx;
+  l = Math.hypot(xx, xy, xz) || 1; xx/=l; xy/=l; xz/=l;
+  const yx = zy*xz - zz*xy, yy = zz*xx - zx*xz, yz = zx*xy - zy*xx;
+  return new Float32Array([
+    xx, yx, zx, 0,
+    xy, yy, zy, 0,
+    xz, yz, zz, 0,
+    -(xx*eye[0] + xy*eye[1] + xz*eye[2]),
+    -(yx*eye[0] + yy*eye[1] + yz*eye[2]),
+    -(zx*eye[0] + zy*eye[1] + zz*eye[2]), 1,
+  ]);
+}
+function m4trs(tx, ty, tz, rx, ry, sx, sy, sz) {
+  const cx = Math.cos(rx), sxr = Math.sin(rx), cy = Math.cos(ry), syr = Math.sin(ry);
+  // R = Ry * Rx
+  const m = new Float32Array(16);
+  m[0] = cy * sx;        m[1] = 0 * sx;    m[2] = -syr * sx;      m[3] = 0;
+  m[4] = syr * sxr * sy; m[5] = cx * sy;   m[6] = cy * sxr * sy;  m[7] = 0;
+  m[8] = syr * cx * sz;  m[9] = -sxr * sz; m[10] = cy * cx * sz;  m[11] = 0;
+  m[12] = tx; m[13] = ty; m[14] = tz; m[15] = 1;
+  return m;
+}
+
+/* ============================================================================
+   5. ГРАФИКА: настройка WebGL2 и шейдеры.
+   ========================================================================== */
+const canvas = document.getElementById("gl");
+const gl = canvas.getContext("webgl2", { antialias: true, powerPreference: "high-performance" });
+
+function fail(msg) {
+  document.getElementById("ptxt").style.display = "none";
+  document.getElementById("pbar").style.display = "none";
+  const e = document.getElementById("err");
+  e.style.display = "block";
+  e.textContent = msg;
+  throw new Error(msg);
+}
+if (!gl) fail("Браузер не умеет WebGL2. Открой файл в Chrome, Edge или свежем Safari — движок рисует настоящую трёхмерную геометрию и без WebGL2 не запустится.");
+
+function shader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) fail("Шейдер: " + gl.getShaderInfoLog(s));
+  return s;
+}
+function program(vs, fs) {
+  const p = gl.createProgram();
+  gl.attachShader(p, shader(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, shader(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) fail("Программа: " + gl.getProgramInfoLog(p));
+  return p;
+}
+
+/* ---- общие куски шейдеров: шум и туман ---- */
+const GLSL_COMMON = `
+float h21(vec2 p) {
+  p = fract(p * vec2(443.897, 441.423));
+  p += dot(p, p + 19.19);
+  return fract(p.x * p.y);
+}
+float vn(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h21(i), h21(i + vec2(1,0)), f.x),
+             mix(h21(i + vec2(0,1)), h21(i + vec2(1,1)), f.x), f.y);
+}
+float fbm(vec2 p) {
+  float s = 0.0, a = 0.5;
+  for (int i = 0; i < 4; i++) { s += a * vn(p); p *= 2.03; a *= 0.5; }
+  return s;
+}
+`;
+
+/* ---- НЕБО. Рисуется одним треугольником на весь экран по направлению луча.
+       Градиент, дымка у горизонта, диск солнца с ореолом, слоистые облака.  ---- */
+const SKY_VS = `#version 300 es
+out vec2 vUV;
+void main() {
+  vec2 p = vec2((gl_VertexID == 1) ? 3.0 : -1.0, (gl_VertexID == 2) ? 3.0 : -1.0);
+  vUV = p;
+  gl_Position = vec4(p, 0.9999, 1.0);
+}`;
+
+const SKY_FS = `#version 300 es
+precision highp float;
+in vec2 vUV;
+out vec4 FRAG;
+uniform vec3 uRight, uUp, uFwd;
+uniform float uAspect, uTanHalf;
+uniform vec3 uZen, uHor, uGnd;
+uniform vec3 uSunDir, uSunCol;
+uniform float uNight, uTime;
+${GLSL_COMMON}
+void main() {
+  vec3 rd = normalize(uFwd + uRight * vUV.x * uAspect * uTanHalf + uUp * vUV.y * uTanHalf);
+  float up = rd.y;
+  // небо и земля сходятся в дымке, поэтому горизонт не режет картинку пополам
+  float t = smoothstep(-0.02, 0.55, up);
+  vec3 col = mix(uHor, uZen, t);
+  col = mix(uGnd, col, smoothstep(-0.28, 0.0, up));
+
+  // солнце
+  float sd = max(dot(rd, uSunDir), 0.0);
+  col += uSunCol * pow(sd, 900.0) * 6.0;
+  col += uSunCol * pow(sd, 22.0) * 0.34;
+  col += uSunCol * pow(sd, 3.0) * 0.06;
+
+  // облака: два слоя, ползут с разной скоростью
+  if (up > 0.008) {
+    vec2 cp = rd.xz / max(up, 0.02);
+    float c1 = fbm(cp * 0.85 + vec2(uTime * 0.006, 0.0));
+    float c2 = fbm(cp * 2.10 + vec2(uTime * 0.013, 4.0));
+    float cl = smoothstep(0.52, 0.86, c1 * 0.68 + c2 * 0.32);
+    cl *= smoothstep(0.008, 0.22, up);
+    vec3 lit = mix(vec3(0.30, 0.29, 0.30), vec3(1.02, 0.97, 0.88), pow(sd, 4.0) * 0.6 + 0.4);
+    col = mix(col, lit * (1.0 - uNight * 0.75), cl * 0.72);
+  }
+
+  // звёзды ночью
+  if (uNight > 0.05 && up > 0.02) {
+    vec2 sp = floor(rd.xz / max(up, 0.05) * 90.0);
+    float st = step(0.9975, h21(sp));
+    col += vec3(0.9, 0.93, 1.0) * st * uNight * 0.9 * smoothstep(0.05, 0.4, up);
+  }
+
+  col *= mix(1.0, 0.26, uNight);
+  FRAG = vec4(col, 1.0);
+}`;
+
+/* ---- ПОРОДА. Цвет берём из таблицы, деталь дорисовываем по виду породы:
+       трещины в камне, вкрапления в руде, волокна в дереве, рёбра в металле. ---- */
+const TERR_VS = `#version 300 es
+layout(location=0) in vec3 aPos;
+layout(location=1) in vec3 aNrm;
+layout(location=2) in vec3 aLAM;   // свет неба, затенение углов, номер породы
+uniform mat4 uVP;
+out vec3 vPos; out vec3 vNrm; out float vL; out float vAO; out float vMat;
+void main() {
+  vPos = aPos; vNrm = aNrm;
+  vL = aLAM.x; vAO = aLAM.y; vMat = aLAM.z;
+  gl_Position = uVP * vec4(aPos, 1.0);
+}`;
+
+const TERR_FS = `#version 300 es
+precision highp float;
+in vec3 vPos; in vec3 vNrm; in float vL; in float vAO; in float vMat;
+out vec4 FRAG;
+uniform vec4 uCol[32];     // rgb цвет, w вид породы
+uniform vec4 uOre[32];     // rgb цвет вкраплений
+uniform vec3 uSunDir, uSunCol, uSkyCol, uGndCol;
+uniform vec3 uEye;
+uniform vec3 uFogCol;
+uniform float uNight;
+${GLSL_COMMON}
+void main() {
+  int m = int(vMat + 0.5);
+  vec3 base = uCol[m].rgb;
+  int kind = int(uCol[m].w + 0.5);
+  // Нормаль берём как есть. Разворачивать её по gl_FrontFacing нельзя: обход
+  // вершин у верхних граней обратный, и земля освещалась бы как потолок.
+  vec3 n = normalize(vNrm);
+
+  // координаты внутри частицы породы: по ним делаем и разброс тона, и деталь
+  vec2 uv = (abs(n.z) > 0.5) ? vPos.xy : ((abs(n.x) > 0.5) ? vPos.zy : vPos.xz);
+  vec2 cellId = floor(uv / ${SCALE.toFixed(4)});
+  float tone = h21(cellId + float(m) * 3.7);
+  base *= 0.84 + 0.32 * tone;
+
+  float grain = fbm(uv * 26.0);
+  base *= 0.86 + 0.28 * grain;
+
+  if (kind == 1) {                       // трава: пучки и подпалины
+    float bl = fbm(uv * vec2(58.0, 12.0));
+    base = mix(base, base * vec3(1.28, 1.22, 0.82), smoothstep(0.55, 0.9, bl) * 0.7);
+    base = mix(base, vec3(0.30, 0.25, 0.14), smoothstep(0.72, 0.98, fbm(uv * 5.0)) * 0.5);
+  } else if (kind == 2) {                // камень и бетон: трещины
+    float c = fbm(uv * 9.0);
+    float cr = 1.0 - smoothstep(0.0, 0.055, abs(c - 0.5));
+    base *= 1.0 - cr * 0.55;
+    base *= 0.92 + 0.2 * fbm(uv * 2.2);
+  } else if (kind == 3) {                // руда: вкрапления
+    float sp = fbm(uv * 30.0 + 11.0);
+    base = mix(base, uOre[m].rgb, smoothstep(0.63, 0.82, sp));
+  } else if (kind == 4) {                // доски: продольные волокна
+    float w = fract(uv.y * 3.4);
+    base *= 0.82 + 0.3 * fbm(uv * vec2(4.0, 40.0));
+    base *= 1.0 - smoothstep(0.9, 1.0, w) * 0.5;
+  } else if (kind == 5) {                // кора: вертикальные борозды
+    float b = fbm(uv * vec2(46.0, 5.0));
+    base *= 0.68 + 0.62 * b;
+  } else if (kind == 6) {                // листва: рваные пятна
+    float lf = fbm(uv * 34.0);
+    if (lf < 0.34) discard;              // дырки в кроне — сквозь них видно небо
+    base *= 0.72 + 0.6 * lf;
+  } else if (kind == 7) {                // профлист: рёбра
+    float r = abs(fract(uv.x * 6.0) - 0.5) * 2.0;
+    base *= 0.72 + 0.5 * r;
+  } else if (kind == 8) {                // стекло
+    base += vec3(0.18, 0.22, 0.24) * pow(max(n.z, 0.0), 3.0);
+  }
+
+  // ---- свет ----
+  float sun = max(dot(n, uSunDir), 0.0);
+  float sky = 0.5 + 0.5 * n.y;                       // полусферный свет неба
+  float skyLight = vL;                               // запечённый свет сверху
+  vec3 lit = base * (uSunCol * sun * skyLight * 1.30
+                   + mix(uGndCol, uSkyCol, sky) * (0.22 + 0.44 * skyLight));
+  lit *= vAO;
+
+  // лёгкий блик по кромкам, чтобы объём читался
+  vec3 vd = normalize(uEye - vPos);
+  float rim = pow(1.0 - max(dot(vd, n), 0.0), 3.0);
+  lit += uSkyCol * rim * 0.10 * skyLight;
+
+  lit *= mix(1.0, 0.46, uNight);
+
+  // ---- воздушная перспектива ----
+  float d = length(uEye - vPos);
+  float fog = 1.0 - exp(-pow(max(d - 11.0, 0.0) * 0.0072, 1.25));
+  lit = mix(lit, uFogCol, clamp(fog, 0.0, 0.86));
+
+  // экспозиция и тональная компрессия: без них земля выбеливается в песок
+  lit *= 0.76;
+  lit = (lit * (2.51 * lit + 0.03)) / (lit * (2.43 * lit + 0.59) + 0.14);
+  FRAG = vec4(pow(clamp(lit, 0.0, 1.0), vec3(0.4545)), 1.0);
+}`;
+
+/* ---- ФИГУРЫ: герой и зомби. Простые объёмы, но свет и туман те же. ---- */
+const MODEL_VS = `#version 300 es
+layout(location=0) in vec3 aPos;
+layout(location=1) in vec3 aNrm;
+uniform mat4 uVP, uModel;
+out vec3 vPos; out vec3 vNrm;
+void main() {
+  vec4 wp = uModel * vec4(aPos, 1.0);
+  vPos = wp.xyz;
+  vNrm = mat3(uModel) * aNrm;
+  gl_Position = uVP * wp;
+}`;
+
+const MODEL_FS = `#version 300 es
+precision highp float;
+in vec3 vPos; in vec3 vNrm;
+out vec4 FRAG;
+uniform vec3 uColor;
+uniform float uRough;
+uniform vec3 uSunDir, uSunCol, uSkyCol, uGndCol, uEye, uFogCol;
+uniform float uNight, uLight;
+void main() {
+  vec3 n = normalize(vNrm);
+  if (!gl_FrontFacing) n = -n;
+  float sun = max(dot(n, uSunDir), 0.0);
+  float sky = 0.5 + 0.5 * n.y;
+  vec3 lit = uColor * (uSunCol * sun * 1.2 * uLight + mix(uGndCol, uSkyCol, sky) * (0.35 + 0.5 * uLight));
+  vec3 vd = normalize(uEye - vPos);
+  vec3 hv = normalize(vd + uSunDir);
+  float spec = pow(max(dot(n, hv), 0.0), mix(120.0, 8.0, uRough)) * (1.0 - uRough) * 0.7;
+  lit += uSunCol * spec * uLight;
+  lit *= mix(1.0, 0.48, uNight);
+  lit *= 0.80;
+  float d = length(uEye - vPos);
+  float fog = 1.0 - exp(-pow(max(d - 11.0, 0.0) * 0.0072, 1.25));
+  lit = mix(lit, uFogCol, clamp(fog, 0.0, 0.86));
+  lit = (lit * (2.51 * lit + 0.03)) / (lit * (2.43 * lit + 0.59) + 0.14);
+  FRAG = vec4(pow(clamp(lit, 0.0, 1.0), vec3(0.4545)), 1.0);
+}`;
+
+const skyProg   = program(SKY_VS, SKY_FS);
+const terrProg  = program(TERR_VS, TERR_FS);
+const modelProg = program(MODEL_VS, MODEL_FS);
+
+function locs(p, names) {
+  const o = {};
+  for (const n of names) o[n] = gl.getUniformLocation(p, n);
+  return o;
+}
+const skyU = locs(skyProg, ["uRight","uUp","uFwd","uAspect","uTanHalf","uZen","uHor","uGnd","uSunDir","uSunCol","uNight","uTime"]);
+const terrU = locs(terrProg, ["uVP","uCol","uOre","uSunDir","uSunCol","uSkyCol","uGndCol","uEye","uFogCol","uNight"]);
+const modU = locs(modelProg, ["uVP","uModel","uColor","uRough","uSunDir","uSunCol","uSkyCol","uGndCol","uEye","uFogCol","uNight","uLight"]);
+
+// таблицы пород уходят в шейдер один раз
+const matCol = new Float32Array(32 * 4), matOre = new Float32Array(32 * 4);
+for (let i = 0; i < 32; i++) {
+  const m = MATS[i] || MATS[STONE];
+  matCol.set([m.col[0], m.col[1], m.col[2], m.kind], i * 4);
+  matOre.set([m.ore[0], m.ore[1], m.ore[2], 0], i * 4);
+}
+
+// единичный куб для фигур
+const CUBE = (() => {
+  const v = [];
+  const faces = [
+    [[0,0,1], [[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]]],
+    [[0,0,-1],[[1,-1,-1],[-1,-1,-1],[-1,1,-1],[1,1,-1]]],
+    [[1,0,0], [[1,-1,1],[1,-1,-1],[1,1,-1],[1,1,1]]],
+    [[-1,0,0],[[-1,-1,-1],[-1,-1,1],[-1,1,1],[-1,1,-1]]],
+    [[0,1,0], [[-1,1,1],[1,1,1],[1,1,-1],[-1,1,-1]]],
+    [[0,-1,0],[[-1,-1,-1],[1,-1,-1],[1,-1,1],[-1,-1,1]]],
+  ];
+  for (const [n, q] of faces) {
+    const idx = [0,1,2, 0,2,3];
+    for (const i of idx) v.push(q[i][0]*0.5, q[i][1]*0.5, q[i][2]*0.5, n[0], n[1], n[2]);
+  }
+  const buf = gl.createBuffer();
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 24, 0);
+  gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 24, 12);
+  gl.bindVertexArray(null);
+  return { vao, count: v.length / 6 };
+})();
+
+/* ============================================================================
+   6. СБОРКА ГЕОМЕТРИИ ПО КУСКАМ.
+
+   Мир — плита с толщиной. Для каждой частицы породы выпускаем только те грани,
+   которых реально видно: передняя всегда, верхняя — где сверху пусто, боковые —
+   где пусто рядом. Так земля читается как земля: сверху широкая плоскость,
+   уходящая к зрителю, а не одна вертикальная стена срезом.
+
+   Живут только куски рядом с игроком, и собираются они по паре за кадр —
+   иначе 5,7 миллиона частиц не показать.
+   ========================================================================== */
+const CH = 32;                 // частиц в куске по стороне
+const RADIUS_X = 5, RADIUS_Y = 4;
+const BUILD_PER_FRAME = 3;
+
+const Chunker = {
+  live: new Map(),             // "cx,cy" -> {vao, buf, count}
+  queue: [],
+
+  key(kx, ky) { return kx + "," + ky; },
+
+  frontZ(cx) {
+    if (cx < 0) cx = 0; else if (cx >= WW) cx = WW - 1;
+    return World.frontZ[cx];
+  },
+
+  // затенение углов: чем больше породы вокруг, тем темнее — даёт мягкие углы
+  ao(cx, cy) {
+    let n = 0;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++)
+        if ((dx || dy) && World.solid(cx + dx, cy + dy)) n++;
+    return 1.0 - n * 0.038;
+  },
+
+  update(centerCellX, centerCellY) {
+    const kx0 = Math.floor(centerCellX / CH), ky0 = Math.floor(centerCellY / CH);
+    const want = new Set();
+    for (let ky = ky0 - RADIUS_Y; ky <= ky0 + RADIUS_Y; ky++) {
+      for (let kx = kx0 - RADIUS_X; kx <= kx0 + RADIUS_X; kx++) {
+        if (kx < 0 || ky < 0 || kx * CH >= WW || ky * CH >= WH) continue;
+        want.add(this.key(kx, ky));
+      }
+    }
+    // лишние куски отдаём обратно видеопамяти
+    for (const k of [...this.live.keys()]) {
+      if (!want.has(k)) {
+        const c = this.live.get(k);
+        gl.deleteVertexArray(c.vao); gl.deleteBuffer(c.buf);
+        this.live.delete(k);
+      }
+    }
+    this.queue.length = 0;
+    for (const k of want) {
+      if (this.live.has(k)) continue;
+      const [kx, ky] = k.split(",").map(Number);
+      const d = Math.abs(kx - kx0) * 1.4 + Math.abs(ky - ky0);
+      this.queue.push({ kx, ky, d });
+    }
+    this.queue.sort((a, b) => a.d - b.d);          // ближние куски строим первыми
+  },
+
+  step() {
+    for (let i = 0; i < BUILD_PER_FRAME && this.queue.length; i++) {
+      const { kx, ky } = this.queue.shift();
+      this.build(kx, ky);
+    }
+  },
+
+  invalidate(cx, cy) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const k = this.key(Math.floor((cx + dx * CH) / CH), Math.floor(cy / CH));
+      // пересобираем сам кусок и соседей по краям
+    }
+    const kxs = new Set([Math.floor(cx / CH), Math.floor((cx - 1) / CH), Math.floor((cx + 1) / CH)]);
+    const kys = new Set([Math.floor(cy / CH), Math.floor((cy - 1) / CH), Math.floor((cy + 1) / CH)]);
+    for (const kx of kxs) for (const ky of kys) {
+      const k = this.key(kx, ky);
+      if (!this.live.has(k)) continue;
+      const c = this.live.get(k);
+      gl.deleteVertexArray(c.vao); gl.deleteBuffer(c.buf);
+      this.live.delete(k);
+      this.build(kx, ky);
+    }
+  },
+
+  build(kx, ky) {
+    const v = [];
+    const cx0 = kx * CH, cy0 = ky * CH;
+    const cx1 = Math.min(cx0 + CH, WW), cy1 = Math.min(cy0 + CH, WH);
+
+    const push = (x, y, z, nx, ny, nz, l, ao, m) => v.push(x, y, z, nx, ny, nz, l, ao, m);
+    const quad = (p0, p1, p2, p3, n, l, ao, m) => {
+      push(p0[0],p0[1],p0[2], n[0],n[1],n[2], l, ao, m);
+      push(p1[0],p1[1],p1[2], n[0],n[1],n[2], l, ao, m);
+      push(p2[0],p2[1],p2[2], n[0],n[1],n[2], l, ao, m);
+      push(p0[0],p0[1],p0[2], n[0],n[1],n[2], l, ao, m);
+      push(p2[0],p2[1],p2[2], n[0],n[1],n[2], l, ao, m);
+      push(p3[0],p3[1],p3[2], n[0],n[1],n[2], l, ao, m);
+    };
+
+    for (let cy = cy0; cy < cy1; cy++) {
+      for (let cx = cx0; cx < cx1; cx++) {
+        const m = World.cell(cx, cy);
+        if (m === AIR) continue;
+        const x0 = cx * SCALE, x1 = x0 + SCALE;
+        const y0 = -cy * SCALE, y1 = y0 - SCALE;      // вниз по миру — минус по Y
+        const zf = this.frontZ(cx), zb = -HD;
+        const ao = this.ao(cx, cy);
+        const own = World.lightAt(cx, cy) / 255;
+
+        // передняя грань: она всегда обращена к камере
+        quad([x0,y1,zf],[x1,y1,zf],[x1,y0,zf],[x0,y0,zf], [0,0,1], own, ao, m);
+
+        // верхняя грань — главная: это и есть земля, уходящая к зрителю
+        if (!World.solid(cx, cy - 1)) {
+          const lt = World.lightAt(cx, cy - 1) / 255;
+          quad([x0,y0,zb],[x1,y0,zb],[x1,y0,zf],[x0,y0,zf], [0,1,0], lt, Math.min(1, ao + 0.06), m);
+        }
+        // нижняя грань — потолки пещер и тоннелей
+        if (!World.solid(cx, cy + 1)) {
+          const lb = World.lightAt(cx, cy + 1) / 255;
+          quad([x0,y1,zf],[x1,y1,zf],[x1,y1,zb],[x0,y1,zb], [0,-1,0], lb * 0.7, ao * 0.85, m);
+        }
+        // боковые грани
+        if (!World.solid(cx - 1, cy)) {
+          const ll = World.lightAt(cx - 1, cy) / 255;
+          quad([x0,y1,zb],[x0,y1,zf],[x0,y0,zf],[x0,y0,zb], [-1,0,0], ll, ao * 0.94, m);
+        } else {
+          // сосед есть, но плита у него другой толщины — закрываем щель ступенькой
+          const zn = this.frontZ(cx - 1);
+          if (zn < zf - 0.001) quad([x0,y1,zn],[x0,y1,zf],[x0,y0,zf],[x0,y0,zn], [-1,0,0], own * 0.9, ao * 0.9, m);
+        }
+        if (!World.solid(cx + 1, cy)) {
+          const lr = World.lightAt(cx + 1, cy) / 255;
+          quad([x1,y1,zf],[x1,y1,zb],[x1,y0,zb],[x1,y0,zf], [1,0,0], lr, ao * 0.94, m);
+        } else {
+          const zn = this.frontZ(cx + 1);
+          if (zn < zf - 0.001) quad([x1,y1,zf],[x1,y1,zn],[x1,y0,zn],[x1,y0,zf], [1,0,0], own * 0.9, ao * 0.9, m);
+        }
+        // задняя грань нужна только у открытых частиц: иначе сквозь прокопанный
+        // тоннель было бы видно небо насквозь
+        if (!World.solid(cx, cy - 1) || !World.solid(cx, cy + 1) ||
+            !World.solid(cx - 1, cy) || !World.solid(cx + 1, cy)) {
+          quad([x1,y1,zb],[x0,y1,zb],[x0,y0,zb],[x1,y0,zb], [0,0,-1], own * 0.55, ao * 0.8, m);
+        }
+      }
+    }
+
+    if (!v.length) { this.live.set(this.key(kx, ky), { vao: null, buf: null, count: 0 }); return; }
+    const buf = gl.createBuffer();
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 36, 0);
+    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 36, 12);
+    gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 36, 24);
+    gl.bindVertexArray(null);
+    this.live.set(this.key(kx, ky), { vao, buf, count: v.length / 9 });
+  },
+
+  draw() {
+    for (const c of this.live.values()) {
+      if (!c.count) continue;
+      gl.bindVertexArray(c.vao);
+      gl.drawArrays(gl.TRIANGLES, 0, c.count);
+    }
+  },
+};
+
+/* ============================================================================
+   6б. ДАЛЬНИЙ ПЛАН.
+
+   Кусками геометрии мир живёт метров на сорок вокруг игрока, а дальше обрывался
+   в пустую дымку — картинка читалась как площадка, висящая в тумане. Поэтому
+   позади строим два дальних гребня из того же рельефа: они уходят в туман сами
+   собой, потому что стоят далеко, и дают горизонту глубину почти бесплатно —
+   пара сотен треугольников на оба слоя.
+   ========================================================================== */
+const Backdrop = {
+  mesh: null,
+  lastCx: -99999,
+  ROWS: [-HD, -7, -14, -25, -42, -68, -105, -155, -225],   // ряды по глубине
+  XSTEP: 8,
+  SPAN: 900,
+
+  update(cx) {
+    if (Math.abs(cx - this.lastCx) < 48 && this.mesh) return;
+    this.lastCx = cx;
+    if (this.mesh) { gl.deleteVertexArray(this.mesh.vao); gl.deleteBuffer(this.mesh.buf); }
+    this.mesh = this._build(cx);
+  },
+
+  // высота дальней земли: профиль рельефа плюс собственные пологие волны,
+  // иначе получилась бы линованная поверхность из одинаковых полос
+  _h(cxf, z) {
+    const a = Math.max(0, Math.min(WW - 1, Math.round(cxf)));
+    const far = Math.min(1, -z / 225);
+    const dev = (SURF - World.top[a]) * (1 + far * 0.55);
+    const waves = (fbm2(cxf * 0.006, z * 0.02 + 3.1, 3) - 0.5) * 34 * far;
+    return -(SURF - dev + waves) * SCALE;
+  },
+
+  _build(cx) {
+    const zone = zoneAtCell(cx);
+    const m = (zone.id === "forest" || zone.id === "city") ? GRASS : DIRT;
+    const v = [];
+    const push = (x, y, z) => v.push(x, y, z, 0, 1, 0, 1.0, 1.0, m);
+    for (let r = 0; r < this.ROWS.length - 1; r++) {
+      const z0 = this.ROWS[r], z1 = this.ROWS[r + 1];
+      for (let i = -this.SPAN; i < this.SPAN; i += this.XSTEP) {
+        const a = cx + i, b = cx + i + this.XSTEP;
+        const x0 = a * SCALE, x1 = b * SCALE;
+        const y00 = this._h(a, z0), y10 = this._h(b, z0);
+        const y01 = this._h(a, z1), y11 = this._h(b, z1);
+        push(x0, y00, z0); push(x1, y10, z0); push(x1, y11, z1);
+        push(x0, y00, z0); push(x1, y11, z1); push(x0, y01, z1);
+      }
+    }
+    const buf = gl.createBuffer(), vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 36, 0);
+    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 36, 12);
+    gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 36, 24);
+    gl.bindVertexArray(null);
+    return { vao, buf, count: v.length / 9 };
+  },
+
+  draw() {
+    if (!this.mesh) return;
+    gl.bindVertexArray(this.mesh.vao);
+    gl.drawArrays(gl.TRIANGLES, 0, this.mesh.count);
+  },
+};
+
+/* ============================================================================
+   7. ФИГУРА ЧЕЛОВЕКА. Один набор объёмов, разные цвета — герой и зомби.
+   ========================================================================== */
+function actorZ(px) {
+  // Фигура стоит у самой передней кромки земли. Внутри плиты её не было бы
+  // видно вообще: передняя грань породы закрыла бы её целиком.
+  return Chunker.frontZ(Math.floor(px / CELL)) - 0.30;
+}
+
+// ЧЕЛОВЕК ИЗ ПРОСТЫХ ОБЪЁМОВ.
+//
+// Все размеры и смещения — в пикселях мира и считаются ВВЕРХ от ступней, как
+// удобно думать про человека: ботинок на нуле, голова на 54. В сцене ось Y
+// смотрит вверх, а в мире игры вниз, поэтому знак меняем один раз здесь.
+//
+// Голова — противогаз с ДВУМЯ стёклами: одно круглое стекло по центру читается
+// циклопом, а не лицом.
+function drawHuman(px, py, face, phase, moving, colors, light) {
+  const U = P2M;
+  const bx = px * U, by = -py * U, bz = actorZ(px);
+  const f = face > 0 ? 1 : -1;
+  const yaw = face > 0 ? 0 : Math.PI;
+  const bob = moving ? Math.abs(Math.sin(phase * 2)) * 0.9 : 0;
+
+  const box = (sizePx, upPx, sidePx, zPx, col, rough, tiltX) => {
+    const m = m4trs(
+      bx + sidePx * U * f,
+      by + (upPx + bob) * U,   // вверх от ступней: ось Y сцены смотрит вверх
+      bz + zPx * U * f,
+      tiltX || 0, yaw,
+      sizePx[0] * U, sizePx[1] * U, sizePx[2] * U);
+    gl.uniformMatrix4fv(modU.uModel, false, m);
+    gl.uniform3fv(modU.uColor, col);
+    gl.uniform1f(modU.uRough, rough);
+    gl.uniform1f(modU.uLight, light);
+    gl.bindVertexArray(CUBE.vao);
+    gl.drawArrays(gl.TRIANGLES, 0, CUBE.count);
+  };
+
+  const swing = moving ? Math.sin(phase) * 0.5 : 0;
+
+  // ноги: качаются вокруг бедра, руки — вокруг плеча, в противофазе
+  for (let i = 0; i < 2; i++) {
+    const s = i === 0 ? swing : -swing;
+    const sideL = -3 + i * 6;
+    box([4.4, 18, 5], 22 - 9 * Math.cos(s),   sideL, -9 * Math.sin(s),        colors.pants, 0.85, s);
+    box([5.4, 4, 8],  22 - 19.5 * Math.cos(s), sideL, -19.5 * Math.sin(s) + 1, colors.boot, 0.7, s);
+    const a = -s * 0.8;
+    box([3.6, 17, 3.6], 44 - 8.5 * Math.cos(a), -6 + i * 12, -8.5 * Math.sin(a), colors.skin, 0.75, a);
+  }
+  box([11, 20, 7], 34, 0, 0, colors.cloth, 0.85);      // торс
+  box([10, 4.5, 7], 23, 0, 0, colors.pants, 0.9);      // бёдра
+  box([4, 3, 4], 44.5, 0, 0, colors.skin, 0.75);       // шея
+  box([9, 9.5, 9], 49, 0, 0, colors.head, 0.6);        // голова
+  if (colors.lenses) {
+    box([2.9, 2.9, 1.6], 49.8, -2.4, 4.6, colors.glass, 0.06);
+    box([2.9, 2.9, 1.6], 49.8,  2.4, 4.6, colors.glass, 0.06);
+    box([1.1, 2.6, 1.3], 49.8,  0.0, 4.6, colors.pants, 0.6);
+    box([4.2, 4.2, 4.6], 46.6,  0.0, 3.6, colors.pants, 0.55);   // фильтр у рта
+  } else {
+    box([1.7, 1.3, 1.3], 50.4, -2.0, 4.7, [0.05, 0.03, 0.03], 0.5);
+    box([1.7, 1.3, 1.3], 50.4,  2.0, 4.7, [0.05, 0.03, 0.03], 0.5);
+  }
+}
+
+const HERO_COLORS = {
+  skin:  [0.62, 0.46, 0.35],
+  cloth: [0.42, 0.40, 0.33],
+  pants: [0.13, 0.14, 0.17],
+  boot:  [0.11, 0.09, 0.07],
+  head:  [0.17, 0.19, 0.16],
+  glass: [0.30, 0.42, 0.40],
+  lenses: true,
+};
+const ZOMBIE_COLORS = {
+  skin:  [0.40, 0.47, 0.34],
+  cloth: [0.27, 0.25, 0.22],
+  pants: [0.18, 0.17, 0.16],
+  boot:  [0.10, 0.09, 0.08],
+  head:  [0.44, 0.50, 0.36],
+  glass: [0.4, 0.4, 0.4],
+  lenses: false,
+};
+
+/* ============================================================================
+   8. ФИЗИКА. Та же, что в двумерной игре, и намеренно не движковая:
+   столкновения считаются по частицам породы, потому что мир разрушаемый.
+   ========================================================================== */
+const BODY_W = 13, BODY_H = 54;
+
+function hits(px, py, w, h) {
+  const x0 = Math.floor((px - w * 0.5) / CELL), x1 = Math.floor((px + w * 0.5 - 1) / CELL);
+  const y0 = Math.floor((py - h) / CELL),       y1 = Math.floor((py - 1) / CELL);
+  for (let cy = y0; cy <= y1; cy++)
+    for (let cx = x0; cx <= x1; cx++)
+      if (World.solid(cx, cy)) return true;
+  return false;
+}
+
+function makeActor(px, py) {
+  return { px, py, vx: 0, vy: 0, onGround: false, face: 1, phase: 0, hp: 100 };
+}
+
+function moveActor(a, w, h) {
+  // по X: с подъёмом на две частицы, чтобы не спотыкаться о камни
+  const nx = a.px + a.vx;
+  if (!hits(nx, a.py, w, h)) a.px = nx;
+  else {
+    let done = false;
+    for (let up = 1; up <= 2 && !done; up++) {
+      const ny = a.py - up * CELL;
+      if (!hits(nx, ny, w, h) && !hits(a.px, ny, w, h)) { a.px = nx; a.py = ny; done = true; }
+    }
+    if (!done) a.vx = 0;
+  }
+  // по Y
+  const ny = a.py + a.vy;
+  if (!hits(a.px, ny, w, h)) { a.py = ny; a.onGround = false; }
+  else {
+    if (a.vy > 0) {
+      while (!hits(a.px, a.py + 1, w, h)) a.py += 1;
+      a.onGround = true;
+    }
+    a.vy = 0;
+  }
+  a.px = Math.max(CELL * 2, Math.min((WW - 3) * CELL, a.px));
+}
+
+function unstuck(a, w, h) {
+  if (!hits(a.px, a.py, w, h)) return;
+  for (let up = 1; up <= 20; up++) {
+    if (!hits(a.px, a.py - up * CELL, w, h)) { a.py -= up * CELL; a.vy = 0; return; }
+  }
+  a.py = World.surfacePx(a.px) - CELL;
+  a.vy = 0;
+}
+
+/* ============================================================================
+   9. ВВОД
+   ========================================================================== */
+const Input = {
+  down: new Set(), mx: 0, my: 0, mouse: 0, wheel: 0,
+  init() {
+    addEventListener("keydown", e => {
+      if (["Space","ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Tab"].includes(e.code)) e.preventDefault();
+      this.down.add(e.code);
+      if (e.code === "KeyF") toggleFull();
+      if (e.code >= "Digit1" && e.code <= "Digit6") Game.gotoZone(+e.code.slice(5) - 1);
+    });
+    addEventListener("keyup", e => this.down.delete(e.code));
+    addEventListener("blur", () => this.down.clear());
+    canvas.addEventListener("mousemove", e => {
+      const r = canvas.getBoundingClientRect();
+      this.mx = (e.clientX - r.left) / r.width * 2 - 1;
+      this.my = 1 - (e.clientY - r.top) / r.height * 2;
+    });
+    canvas.addEventListener("mousedown", e => { this.mouse |= (1 << e.button); e.preventDefault(); });
+    addEventListener("mouseup", e => { this.mouse &= ~(1 << e.button); });
+    canvas.addEventListener("contextmenu", e => e.preventDefault());
+    canvas.addEventListener("wheel", e => { this.wheel += Math.sign(e.deltaY); e.preventDefault(); }, { passive: false });
+  },
+  has(...codes) { return codes.some(c => this.down.has(c)); },
+};
+
+function toggleFull() {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+  else document.exitFullscreen?.();
+}
+
+/* ============================================================================
+   10. ИГРА
+   ========================================================================== */
+const Game = {
+  player: null,
+  zombies: [],
+  bag: { dirt: 0, stone: 0, wood: 0, ore: 0, kill: 0 },
+  camDist: 9.5, camHeight: 4.6,
+  time: 0.40 * 600,          // сутки 600 секунд, начинаем ближе к полудню
+  fpsSmooth: 60, acc: 0, last: 0, dead: false,
+  digCooldown: 0, hitCooldown: 0, hurtCooldown: 0,
+  stamina: 100,
+  camX: 0, camY: 0,
+
+  start() {
+    this.player = makeActor(3480 * CELL, 0);
+    this.player.py = World.surfacePx(this.player.px) - CELL;
+    this.camX = this.player.px * P2M;
+    this.camY = -this.player.py * P2M;
+    this.spawnWave();
+    Chunker.update(Math.floor(this.player.px / CELL), Math.floor(this.player.py / CELL));
+    for (let i = 0; i < 400 && Chunker.queue.length; i++) Chunker.step();
+    Backdrop.update(Math.floor(this.player.px / CELL));
+    this.last = performance.now();
+    requestAnimationFrame(t => this.frame(t));
+  },
+
+  respawn() {
+    document.getElementById("dead").style.display = "none";
+    this.dead = false;
+    this.player.hp = 100;
+    this.player.py = World.surfacePx(this.player.px) - CELL;
+    this.player.vx = this.player.vy = 0;
+    this.zombies.length = 0;
+    this.spawnWave();
+  },
+
+  gotoZone(i) {
+    const z = ZONES[i];
+    if (!z) return;
+    const cx = Math.floor((z.x0 + z.x1) / 2);
+    this.player.px = cx * CELL;
+    this.player.py = World.surfacePx(this.player.px) - CELL;
+    this.player.vx = this.player.vy = 0;
+    this.zombies.length = 0;
+    this.spawnWave();
+    Chunker.update(cx, Math.floor(this.player.py / CELL));
+    for (let i = 0; i < 400 && Chunker.queue.length; i++) Chunker.step();
+    Backdrop.update(cx);
+  },
+
+  spawnWave() {
+    // В мирном городе никого: это единственная локация, где можно выдохнуть.
+    if (zoneAtCell(Math.floor(this.player.px / CELL)).id === "city") return;
+    const n = 2 + Math.floor(rnd() * 2);
+    for (let i = 0; i < n; i++) {
+      const side = rnd() < 0.5 ? -1 : 1;
+      // подальше: иначе игрока съедают, пока он ещё разбирается в управлении
+      const px = this.player.px + side * (620 + rnd() * 700);
+      const z = makeActor(px, World.surfacePx(px) - CELL);
+      z.hp = 40;
+      z.spd = 0.95 + rnd() * 0.55;      // медленнее бега героя (2,56), иначе не убежать
+      this.zombies.push(z);
+    }
+  },
+
+  /* ---- один шаг физики: ровно 1/60 секунды, как в двумерной игре ---- */
+  update(dt) {
+    this.time = (this.time + dt) % 600;
+    const p = this.player;
+
+    if (!this.dead) {
+      let ax = 0;
+      if (Input.has("KeyA", "ArrowLeft"))  ax -= 1;
+      if (Input.has("KeyD", "ArrowRight")) ax += 1;
+      const wantSprint = Input.has("ShiftLeft", "ShiftRight") && this.stamina > 1 && ax !== 0;
+      const sprint = wantSprint ? 1.55 : 1;
+      this.stamina = Math.max(0, Math.min(100, this.stamina + (wantSprint ? -22 * dt : 14 * dt)));
+
+      p.vx = ax * 1.65 * sprint;
+      if (ax !== 0) { p.face = Math.sign(ax); p.phase += dt * (7 + Math.abs(p.vx) * 3.2); }
+      else p.phase += dt * 0.8;
+
+      if (Input.has("Space", "KeyW", "ArrowUp") && p.onGround) { p.vy = -5.4; p.onGround = false; }
+      p.vy = Math.min(14, p.vy + GRAV);
+      unstuck(p, BODY_W, BODY_H);
+      moveActor(p, BODY_W, BODY_H);
+
+      this.digCooldown -= dt; this.hitCooldown -= dt; this.hurtCooldown -= dt;
+      if (Input.mouse & 1) this.leftClick();
+      if (Input.mouse & 2) this.place();
+    }
+
+    // ---- зомби ----
+    for (const z of this.zombies) {
+      if (z.hp <= 0) continue;
+      const d = p.px - z.px;
+      const dir = Math.sign(d);
+      if (Math.abs(d) > 20 && Math.abs(p.py - z.py) < 260) {
+        z.vx = dir * z.spd;
+        z.face = dir;
+        z.phase += dt * 6;
+      } else z.vx = 0;
+      // прыгает, если перед ним стена
+      if (z.onGround && z.vx !== 0 && hits(z.px + z.vx * 4, z.py, BODY_W, BODY_H)) z.vy = -5.0;
+      z.vy = Math.min(14, z.vy + GRAV);
+      unstuck(z, BODY_W, BODY_H);
+      moveActor(z, BODY_W, BODY_H);
+      if (!this.dead && Math.abs(d) < 22 && Math.abs(p.py - z.py) < 40 && this.hurtCooldown <= 0) {
+        p.hp -= 5; this.hurtCooldown = 1.3;
+        if (p.hp <= 0) { p.hp = 0; this.dead = true; document.getElementById("dead").style.display = "flex"; }
+      }
+    }
+    if (!this.dead) {
+      const near = this.zombies.some(z => Math.abs(z.px - p.px) < 220);
+      if (!near && p.hp < 100) p.hp = Math.min(100, p.hp + 2.5 * dt);
+    }
+    this.zombies = this.zombies.filter(z => z.hp > 0 && Math.abs(z.px - p.px) < 3000);
+    if (this.zombies.length < 2 && rnd() < dt * 0.35) this.spawnWave();
+  },
+
+  /* ЛКМ: если перед героем зомби — удар, иначе копаем то, куда указывает курсор */
+  leftClick() {
+    const p = this.player;
+    for (const z of this.zombies) {
+      const dx = (z.px - p.px) * p.face, dy = (z.py - 24) - (p.py - 24);
+      if (dx > -34 && dx < 46 && Math.abs(dy) < 34) {
+        if (this.hitCooldown > 0) return;
+        this.hitCooldown = 0.36;
+        z.hp -= 26;
+        z.vx = p.face * 3;
+        z.vy = -2.2;
+        if (z.hp <= 0) { this.bag.kill++; }
+        return;
+      }
+    }
+    this.dig();
+  },
+
+  // Луч из камеры через курсор ищет первую частицу породы: копаем именно там,
+  // куда игрок показал, а не «перед носом».
+  pick() {
+    const cam = this.cam;
+    const rd = this.rayFromMouse();
+    let t = 0.4;
+    for (let i = 0; i < 420; i++) {
+      t += 0.055;
+      const x = cam.eye[0] + rd[0] * t, y = cam.eye[1] + rd[1] * t, z = cam.eye[2] + rd[2] * t;
+      const cx = Math.floor(x / SCALE), cy = Math.floor(-y / SCALE);
+      if (cx < 0 || cx >= WW || cy < 0 || cy >= WH) continue;
+      if (!World.solid(cx, cy) && World.cell(cx, cy) === AIR) continue;
+      const zf = Chunker.frontZ(cx);
+      if (z > zf || z < -HD) continue;
+      const px = cx * CELL, py = cy * CELL;
+      const dx = px - this.player.px, dy = py - this.player.py;
+      if (Math.hypot(dx, dy) > 130) return null;      // дальше руки не достают
+      return { cx, cy };
+    }
+    return null;
+  },
+
+  dig() {
+    if (this.digCooldown > 0) return;
+    const hit = this.pick();
+    if (!hit) return;
+    const m = World.cell(hit.cx, hit.cy);
+    const info = MATS[m] || MATS[STONE];
+    this.digCooldown = 0.10 + info.hard * 0.16;
+    // берём 2x2 частицы, как ручным буром в основной игре
+    const cols = new Set();
+    for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+      const cx = hit.cx + dx, cy = hit.cy + dy;
+      const mm = World.cell(cx, cy);
+      if (mm === AIR) continue;
+      const inf = MATS[mm] || MATS[STONE];
+      if (inf.drop) this.bag[inf.drop] = (this.bag[inf.drop] || 0) + 1;
+      World.set(cx, cy, AIR);
+      cols.add(cx);
+    }
+    if (!cols.size) return;
+    for (const cx of cols) World.relight(cx);
+    Chunker.invalidate(hit.cx, hit.cy);
+  },
+
+  place() {
+    if (this.digCooldown > 0 || this.bag.dirt <= 0) return;
+    const cam = this.cam, rd = this.rayFromMouse();
+    let t = 0.4, prev = null;
+    for (let i = 0; i < 420; i++) {
+      t += 0.055;
+      const x = cam.eye[0] + rd[0] * t, y = cam.eye[1] + rd[1] * t, z = cam.eye[2] + rd[2] * t;
+      const cx = Math.floor(x / SCALE), cy = Math.floor(-y / SCALE);
+      if (cx < 0 || cx >= WW || cy < 0 || cy >= WH) continue;
+      if (z > Chunker.frontZ(cx) || z < -HD) { prev = { cx, cy }; continue; }
+      if (World.cell(cx, cy) === AIR) { prev = { cx, cy }; continue; }
+      if (!prev) return;
+      if (Math.hypot(prev.cx * CELL - this.player.px, prev.cy * CELL - this.player.py) > 130) return;
+      if (hits(this.player.px, this.player.py, BODY_W, BODY_H)) return;
+      World.set(prev.cx, prev.cy, DIRT);
+      if (hits(this.player.px, this.player.py, BODY_W, BODY_H)) { World.set(prev.cx, prev.cy, AIR); return; }
+      this.bag.dirt--;
+      this.digCooldown = 0.16;
+      World.relight(prev.cx);
+      Chunker.invalidate(prev.cx, prev.cy);
+      return;
+    }
+  },
+
+  rayFromMouse() {
+    const c = this.cam;
+    const th = Math.tan(c.fov / 2);
+    const x = Input.mx * c.aspect * th, y = Input.my * th;
+    const d = [
+      c.fwd[0] + c.right[0] * x + c.up[0] * y,
+      c.fwd[1] + c.right[1] * x + c.up[1] * y,
+      c.fwd[2] + c.right[2] * x + c.up[2] * y,
+    ];
+    const l = Math.hypot(d[0], d[1], d[2]);
+    return [d[0]/l, d[1]/l, d[2]/l];
+  },
+
+  /* ---- камера: приподнята и наклонена вниз, чтобы земля читалась землёй ---- */
+  buildCam(dt) {
+    const p = this.player;
+    const tx = p.px * P2M, ty = -p.py * P2M + 0.9;
+    // мягкое слежение: камера не дёргается на каждом шаге
+    const k = 1 - Math.pow(0.0016, Math.max(dt, 0.0001));
+    this.camX += (tx - this.camX) * k;
+    this.camY += (ty - this.camY) * k;
+
+    if (Input.wheel) {
+      this.camDist = Math.max(4.5, Math.min(22, this.camDist + Input.wheel * 0.9));
+      Input.wheel = 0;
+    }
+    const dist = this.camDist;
+    const zp = actorZ(p.px);
+    const eye = [this.camX, this.camY + this.camHeight * (dist / 9), zp + dist];
+    const at  = [this.camX, this.camY + 0.15, zp];
+    const fov = 50 * Math.PI / 180;
+    const aspect = canvas.width / canvas.height;
+    const view = m4look(eye, at, [0, 1, 0]);
+    const proj = m4persp(fov, aspect, 0.08, 320);
+    const vp = m4mul(proj, view);
+    // базис камеры нужен и небу, и лучу под курсором
+    const fwd = [at[0]-eye[0], at[1]-eye[1], at[2]-eye[2]];
+    let l = Math.hypot(...fwd); fwd[0]/=l; fwd[1]/=l; fwd[2]/=l;
+    const right = [fwd[2], 0, -fwd[0]];
+    l = Math.hypot(...right) || 1; right[0]/=l; right[1]/=l; right[2]/=l;
+    const up = [
+      right[1]*fwd[2] - right[2]*fwd[1],
+      right[2]*fwd[0] - right[0]*fwd[2],
+      right[0]*fwd[1] - right[1]*fwd[0],
+    ];
+    this.cam = { eye, vp, fwd, right, up: [-up[0], -up[1], -up[2]], fov, aspect };
+  },
+
+  /* ---- солнце и краски суток ---- */
+  sky() {
+    const p = this.player;
+    const zone = zoneAtCell(Math.floor(p.px / CELL));
+    // сутки: солнце ходит по дуге, ночью уходит за горизонт
+    const f = this.time / 600;
+    const ang = (f - 0.25) * Math.PI * 2;
+    let sy = Math.sin(ang), sx = Math.cos(ang) * 0.75;
+    const night = Math.max(0, Math.min(1, (-sy + 0.05) * 3.2));
+    if (sy < 0.03) sy = 0.03;
+    let sd = [sx, sy + 0.32, 0.55];
+    const l = Math.hypot(...sd); sd = sd.map(v => v / l);
+
+    const warm = Math.pow(Math.max(0, 1 - sy * 1.6), 2);   // низкое солнце краснее
+    // Ночью солнце гаснет, но вместо него светит луна: иначе экран становится
+    // чёрным и играть попросту нечем.
+    const sun = [
+      1.35 * (1 - night) * (1 + warm * 0.35) + 0.30 * night,
+      1.24 * (1 - night) * (1 - warm * 0.22) + 0.36 * night,
+      1.05 * (1 - night) * (1 - warm * 0.55) + 0.52 * night,
+    ];
+    const [zen, hor, gnd] = zone.sky;
+    const mixv = (a, b, t) => [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t];
+    const zenC = mixv(zen, [0.04,0.05,0.09], night);
+    const horC = mixv(mixv(hor, [0.72,0.40,0.24], warm * 0.6), [0.06,0.07,0.11], night);
+    const gndC = mixv(gnd, [0.03,0.04,0.05], night);
+    return { sd, sun, zen: zenC, hor: horC, gnd: gndC, night, zone };
+  },
+
+  frame(t) {
+    const raw = Math.min(0.25, (t - this.last) / 1000 || 0.016);
+    this.last = t;
+    this.fpsSmooth += (1 / Math.max(raw, 0.0005) - this.fpsSmooth) * 0.08;
+
+    // Шаг физики фиксированный: скорости заданы «за кадр», и без этого на
+    // мониторе 120 Гц герой бегал бы вдвое быстрее.
+    this.acc += raw;
+    let steps = 0;
+    while (this.acc >= STEP && steps < 5) { this.update(STEP); this.acc -= STEP; steps++; }
+    if (steps >= 5) this.acc = 0;
+
+    this.buildCam(raw);
+    const p = this.player;
+    Chunker.update(Math.floor(p.px / CELL), Math.floor(p.py / CELL));
+    Chunker.step();
+    Backdrop.update(Math.floor(p.px / CELL));
+    this.draw();
+    this.hud();
+    requestAnimationFrame(tt => this.frame(tt));
+  },
+
+  draw() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const cw = Math.floor(w * dpr), chh = Math.floor(h * dpr);
+    if (canvas.width !== cw || canvas.height !== chh) { canvas.width = cw; canvas.height = chh; }
+    gl.viewport(0, 0, canvas.width, canvas.height);
+
+    const S = this.sky();
+    const c = this.cam;
+    // цвет дымки чуть темнее неба: иначе даль выбеливается в бумагу
+    const fogCol = S.hor.map((v, i) => (v * 0.82 + S.zen[i] * 0.18) * 0.74);
+
+    gl.disable(gl.CULL_FACE);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+    gl.clear(gl.DEPTH_BUFFER_BIT);
+
+    // небо
+    gl.useProgram(skyProg);
+    gl.uniform3fv(skyU.uRight, c.right);
+    gl.uniform3fv(skyU.uUp, c.up);
+    gl.uniform3fv(skyU.uFwd, c.fwd);
+    gl.uniform1f(skyU.uAspect, c.aspect);
+    gl.uniform1f(skyU.uTanHalf, Math.tan(c.fov / 2));
+    gl.uniform3fv(skyU.uZen, S.zen);
+    gl.uniform3fv(skyU.uHor, S.hor);
+    gl.uniform3fv(skyU.uGnd, S.gnd);
+    gl.uniform3fv(skyU.uSunDir, S.sd);
+    gl.uniform3fv(skyU.uSunCol, S.sun);
+    gl.uniform1f(skyU.uNight, S.night);
+    gl.uniform1f(skyU.uTime, this.time);
+    gl.bindVertexArray(null);
+    gl.depthMask(false);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.depthMask(true);
+
+    // порода
+    gl.useProgram(terrProg);
+    gl.uniformMatrix4fv(terrU.uVP, false, c.vp);
+    gl.uniform4fv(terrU.uCol, matCol);
+    gl.uniform4fv(terrU.uOre, matOre);
+    gl.uniform3fv(terrU.uSunDir, S.sd);
+    gl.uniform3fv(terrU.uSunCol, S.sun);
+    gl.uniform3fv(terrU.uSkyCol, S.zen);
+    gl.uniform3fv(terrU.uGndCol, S.gnd);
+    gl.uniform3fv(terrU.uEye, c.eye);
+    gl.uniform3fv(terrU.uFogCol, fogCol);
+    gl.uniform1f(terrU.uNight, S.night);
+    Backdrop.draw();
+    Chunker.draw();
+
+    // фигуры
+    gl.useProgram(modelProg);
+    gl.uniformMatrix4fv(modU.uVP, false, c.vp);
+    gl.uniform3fv(modU.uSunDir, S.sd);
+    gl.uniform3fv(modU.uSunCol, S.sun);
+    gl.uniform3fv(modU.uSkyCol, S.zen);
+    gl.uniform3fv(modU.uGndCol, S.gnd);
+    gl.uniform3fv(modU.uEye, c.eye);
+    gl.uniform3fv(modU.uFogCol, fogCol);
+    gl.uniform1f(modU.uNight, S.night);
+
+    const p = this.player;
+    const plight = World.lightAt(Math.floor(p.px / CELL), Math.floor((p.py - 30) / CELL)) / 255;
+    drawHuman(p.px, p.py, p.face, p.phase, Math.abs(p.vx) > 0.05, HERO_COLORS, plight);
+    for (const z of this.zombies) {
+      if (Math.abs(z.px - p.px) > 900) continue;
+      const zl = World.lightAt(Math.floor(z.px / CELL), Math.floor((z.py - 30) / CELL)) / 255;
+      drawHuman(z.px, z.py, z.face, z.phase, Math.abs(z.vx) > 0.05, ZOMBIE_COLORS, zl);
+    }
+  },
+
+  hud() {
+    const p = this.player;
+    const S = this.sky();
+    document.getElementById("zone").textContent = S.zone.name;
+    const mins = this.time / 600 * 24;
+    const hh = String(Math.floor(mins)).padStart(2, "0");
+    const mm = String(Math.floor((mins % 1) * 60)).padStart(2, "0");
+    document.getElementById("clock").textContent =
+      `${hh}:${mm} · ${S.night > 0.5 ? "ночь" : (S.night > 0.05 ? "сумерки" : "день")}`;
+    document.getElementById("hpb").firstElementChild.style.width = p.hp + "%";
+    document.getElementById("stb").firstElementChild.style.width = this.stamina + "%";
+    document.getElementById("fps").textContent = Math.round(this.fpsSmooth);
+    document.getElementById("chunks").textContent = Chunker.live.size;
+    document.getElementById("pos").textContent =
+      `x ${Math.floor(p.px / CELL)} · глубина ${Math.max(0, Math.floor(p.py / CELL) - World.top[Math.floor(p.px / CELL)])}`;
+    for (const k of ["dirt","stone","wood","ore","kill"]) {
+      document.getElementById("i-" + k).textContent = this.bag[k] | 0;
+    }
+  },
+};
+
+/* ============================================================================
+   11. ПОДЪЁМ
+   ========================================================================== */
+Input.init();
+World.generate(
+  (txt, frac) => {
+    document.getElementById("ptxt").textContent = txt;
+    document.getElementById("pbar").firstElementChild.style.width = (frac * 100) + "%";
+  },
+  () => {
+    document.getElementById("pbar").firstElementChild.style.width = "100%";
+    Game.start();
+    const l = document.getElementById("load");
+    l.style.opacity = "0";
+    setTimeout(() => l.remove(), 520);
+  }
+);
+window.Game = Game;
+window.World = World;
+</script>
+</body>
+</html>
