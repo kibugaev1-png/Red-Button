@@ -443,6 +443,7 @@ const World = {
         else if (m === WATER) l *= 0.96;
         else if (m === GLASSW) l *= 0.97;
         else                  l *= 0.86;
+        if (cy < this.top[cx] && l < 96) l = 96;
         if (l < 8) { for (let k = cy + 1; k < WH; k++) this.light[k * WW + cx] = 8; break; }
       }
     }
@@ -461,6 +462,7 @@ const World = {
       else if (m === WATER) l *= 0.96;
       else if (m === GLASSW) l *= 0.97;
       else                  l *= 0.86;
+      if (cy < this.top[cx] && l < 96) l = 96;
       if (l < 8) l = 8;
     }
     this.top[cx] = newTop;
@@ -923,7 +925,12 @@ const Chunker = {
         if (m === AIR) continue;
         const x0 = cx * SCALE, x1 = x0 + SCALE;
         const y0 = -cy * SCALE, y1 = y0 - SCALE;      // вниз по миру — минус по Y
-        const zf = this.frontZ(cx), zb = -HD;
+        // Растительность — не порода: ствол на всю толщину плиты превращался в
+        // стену девяти метров вглубь и закрывал собой полкадра. Поэтому деревья
+        // тонкие и стоят позади героя, как и положено в виде сбоку.
+        const veg = (m === TRUNK || m === LEAF);
+        const zf = veg ? this.frontZ(cx) - 0.55 : this.frontZ(cx);
+        const zb = veg ? zf - 1.1 : -HD;
         const ao = this.ao(cx, cy);
         const own = World.lightAt(cx, cy) / 255;
 
