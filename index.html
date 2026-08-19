@@ -1,18 +1,40 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="0; url=./web/">
-  <title>Красная кнопка — Godot</title>
-  <style>
-    html, body { height: 100%; margin: 0; background: #090909; color: #e8e2d2; }
-    body { display: grid; place-items: center; font: 16px system-ui, sans-serif; }
-    a { color: #d66a58; }
-  </style>
-  <script>location.replace('./web/' + location.search + location.hash);</script>
+<meta charset="utf-8">
+<title>Красная кнопка</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #0b0c0e;
+    overflow: hidden;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #cdc6ae;
+  }
+  #wrap {
+    height: 100%; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 40%, #1a1c20 0%, #0a0b0d 100%);
+  }
+  canvas {
+    display: block;
+    image-rendering: auto;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.8);
+    cursor: crosshair;
+    background: #14161a;
+  }
+</style>
 </head>
 <body>
-  <p>Открываю Godot-версию «Красной кнопки»… <a href="./web/">Запустить игру</a></p>
+<div id="wrap"><canvas id="game"></canvas></div>
+<script src="js/core.js?v=47"></script>
+<script src="js/world.js?v=47"></script>
+<script src="js/human.js?v=47"></script>
+<script src="js/items.js?v=47"></script>
+<script src="js/player.js?v=47"></script>
+<script src="js/entities.js?v=47"></script>
+  <script src="js/build.js?v=47"></script>
+<script src="js/boom.js?v=47"></script>
+<script src="js/ui.js?v=47"></script>
+<script src="js/game.js?v=47"></script>
 </body>
 </html>

@@ -280,6 +280,18 @@ function drawWeapon(ctx, x, y, ang, kind, recoil) {
     ctx.fillStyle = '#3a3e43'; ctx.fillRect(5, 1.2, 3.2, 4.2);
     gloss(1, -2.8, 22);
     sight(29, 1.2);
+  } else if (kind === 'sawnoff') {
+    // два коротких ствола, спиленный приклад — только пистолетная рукоять
+    steel(0, -3, 13, 4.6, 1);
+    steel(12, -2.8, 7, 2.0, 0.5);               // верхний ствол
+    steel(12, -0.6, 7, 2.0, 0.5);               // нижний ствол
+    dark(18.6, -2.8, 0.9, 4.2, 0.3);            // срез стволов
+    wood(-4.5, -2.2, 5, 4.4, 1.5);              // остаток приклада
+    ctx.fillStyle = '#5d411f';                  // пистолетная рукоять
+    ctx.beginPath(); ctx.moveTo(-1, 1.6); ctx.lineTo(3.4, 1.6);
+    ctx.quadraticCurveTo(2.2, 8.4, -2.2, 8.0); ctx.fill();
+    ctx.fillStyle = '#3a3e43'; ctx.fillRect(4.2, 1.4, 3.0, 3.6);
+    gloss(1, -2.8, 10);
   } else if (kind === 'rifle') {
     steel(0, -3, 27, 4.4, 1);
     gloss(1, -2.8, 22);

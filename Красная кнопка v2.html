@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<title>Красная кнопка — сборка 12.08 17:13</title>
+<title>Красная кнопка — сборка 19.08 17:31</title>
 <style>
   html, body {
     margin: 0; padding: 0; height: 100%;
@@ -1609,6 +1609,18 @@ function drawWeapon(ctx, x, y, ang, kind, recoil) {
     ctx.fillStyle = '#3a3e43'; ctx.fillRect(5, 1.2, 3.2, 4.2);
     gloss(1, -2.8, 22);
     sight(29, 1.2);
+  } else if (kind === 'sawnoff') {
+    // два коротких ствола, спиленный приклад — только пистолетная рукоять
+    steel(0, -3, 13, 4.6, 1);
+    steel(12, -2.8, 7, 2.0, 0.5);               // верхний ствол
+    steel(12, -0.6, 7, 2.0, 0.5);               // нижний ствол
+    dark(18.6, -2.8, 0.9, 4.2, 0.3);            // срез стволов
+    wood(-4.5, -2.2, 5, 4.4, 1.5);              // остаток приклада
+    ctx.fillStyle = '#5d411f';                  // пистолетная рукоять
+    ctx.beginPath(); ctx.moveTo(-1, 1.6); ctx.lineTo(3.4, 1.6);
+    ctx.quadraticCurveTo(2.2, 8.4, -2.2, 8.0); ctx.fill();
+    ctx.fillStyle = '#3a3e43'; ctx.fillRect(4.2, 1.4, 3.0, 3.6);
+    gloss(1, -2.8, 10);
   } else if (kind === 'rifle') {
     steel(0, -3, 27, 4.4, 1);
     gloss(1, -2.8, 22);
@@ -1984,6 +1996,11 @@ const ITEMS = {
     icon: (g, s) => { g.save(); g.translate(s * 0.18, s * 0.55); g.scale(s / 26, s / 26); drawWeapon(g, 0, 0, 0, 'revolver', 0); g.restore(); } },
   smg: { name: 'Пистолет-пулемёт', max: 1, type: 'gun', kind: 'smg', ammo: 'ammo9', mag: 32, rof: 0.075, dmg: 19, spread: 0.1, rec: 1.1, desc: 'Свинцовый душ в упор. Патроны кончаются мгновенно.',
     icon: (g, s) => { g.save(); g.translate(s * 0.14, s * 0.55); g.scale(s / 30, s / 30); drawWeapon(g, 0, 0, 0, 'smg', 0); g.restore(); } },
+  // ОБРЕЗ. Дробовик с отпиленным стволом и прикладом: два патрона, чудовищный
+  // разброс и отдача, но в упор бьёт сильнее целого дробовика. Оружие первых
+  // дней — делается дешевле дробовика и носится в одной руке.
+  sawnoff: { name: 'Обрез', max: 1, type: 'gun', kind: 'sawnoff', ammo: 'buckshot', mag: 2, rof: 0.42, dmg: 20, pellets: 9, spread: 0.44, rec: 3.4, desc: 'Два ствола в упор. Дальше трёх шагов — мимо. R — перезарядка.',
+    icon: (g, s) => { g.save(); g.translate(s * 0.2, s * 0.55); g.scale(s / 24, s / 24); drawWeapon(g, 0, 0, 0, 'sawnoff', 0); g.restore(); } },
   shotgun: { name: 'Дробовик', max: 1, type: 'gun', kind: 'shotgun', ammo: 'buckshot', mag: 6, rof: 0.85, dmg: 17, pellets: 7, spread: 0.3, rec: 2.6, desc: 'Семь картечин за выстрел. В упор рвёт зомби пополам.',
     icon: (g, s) => { g.save(); g.translate(s * 0.12, s * 0.55); g.scale(s / 34, s / 34); drawWeapon(g, 0, 0, 0, 'shotgun', 0); g.restore(); } },
   sniper: { name: 'Снайперская винтовка', max: 1, type: 'gun', kind: 'sniper', ammo: 'ammo762', mag: 5, rof: 1.2, dmg: 95, spread: 0.012, rec: 3, desc: 'Один выстрел — один зомби. С оптикой.',
@@ -2191,6 +2208,9 @@ const RECIPES = [
   { out: ['buckshot', 8], in: { gunpowder: 8, iron: 3 }, station: 'workbench' },
   { out: ['revolver', 1], in: { iron: 12, scrap: 8, plank: 2 }, station: 'workbench' },
   { out: ['shotgun', 1], in: { iron: 16, scrap: 12, plank: 6 }, station: 'workbench' },
+  { out: ['sawnoff', 1], in: { iron: 8, scrap: 6, plank: 2 }, station: 'workbench' },
+  // отпилить ствол целому дробовику: обрез можно получить и так
+  { out: ['sawnoff', 1], in: { shotgun: 1 }, station: 'workbench' },
 
   { out: ['ammo545', 12], in: { gunpowder: 8, iron: 3 }, station: 'workbench2' },
   { out: ['smg', 1], in: { iron: 24, scrap: 20, plank: 4 }, station: 'workbench2' },
@@ -3549,7 +3569,8 @@ const TRADERS = [
     id: 'gunsmith', name: 'Оружейник', zone: 'city', at: 0.72, coat: '#4a4e52', hat: '#33373b',
     greet: 'Патроны есть. Стрелять научишься сам.',
     stock: [['ammo9', 20, 12], ['ammo545', 20, 16], ['ammo762', 20, 20], ['buckshot', 10, 14],
-            ['zinc9', 1, 90], ['pistol', 1, 120], ['shotgun', 1, 210], ['grenade', 1, 60]]
+            ['zinc9', 1, 90], ['pistol', 1, 120], ['sawnoff', 1, 140], ['shotgun', 1, 210],
+            ['grenade', 1, 60]]
   },
   {
     id: 'prospector', name: 'Старатель', zone: 'mine', at: 0.5, coat: '#7a5a34', hat: '#5c4426',
@@ -5743,6 +5764,7 @@ const Game = {
     Player.inv.add('stone', 60);
     Player.inv.add('ladder', 12);
     Player.inv.add('home_flag', 1);
+    Player.inv.add('sawnoff', 1);
     Player.inv.add('shotgun', 1);
     Player.inv.add('buckshot', 40);
     Player.inv.add('bandage', 5);
@@ -5759,6 +5781,7 @@ const Game = {
     const dz = ZONES.find(z => z.id === 'dead');
     const armyLoot = [
       [['shotgun', 1], ['buckshot', 24]],
+      [['sawnoff', 1], ['buckshot', 16], ['bandage', 2]],
       [['smg', 1], ['zinc9', 1]],
       [['medkit', 2], ['splint', 2], ['antirad', 3]],
       [['filter', 4], ['scrap', 14], ['iron', 10]],

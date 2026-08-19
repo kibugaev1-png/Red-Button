@@ -185,6 +185,11 @@ const ITEMS = {
     icon: (g, s) => { g.save(); g.translate(s * 0.18, s * 0.55); g.scale(s / 26, s / 26); drawWeapon(g, 0, 0, 0, 'revolver', 0); g.restore(); } },
   smg: { name: 'Пистолет-пулемёт', max: 1, type: 'gun', kind: 'smg', ammo: 'ammo9', mag: 32, rof: 0.075, dmg: 19, spread: 0.1, rec: 1.1, desc: 'Свинцовый душ в упор. Патроны кончаются мгновенно.',
     icon: (g, s) => { g.save(); g.translate(s * 0.14, s * 0.55); g.scale(s / 30, s / 30); drawWeapon(g, 0, 0, 0, 'smg', 0); g.restore(); } },
+  // ОБРЕЗ. Дробовик с отпиленным стволом и прикладом: два патрона, чудовищный
+  // разброс и отдача, но в упор бьёт сильнее целого дробовика. Оружие первых
+  // дней — делается дешевле дробовика и носится в одной руке.
+  sawnoff: { name: 'Обрез', max: 1, type: 'gun', kind: 'sawnoff', ammo: 'buckshot', mag: 2, rof: 0.42, dmg: 20, pellets: 9, spread: 0.44, rec: 3.4, desc: 'Два ствола в упор. Дальше трёх шагов — мимо. R — перезарядка.',
+    icon: (g, s) => { g.save(); g.translate(s * 0.2, s * 0.55); g.scale(s / 24, s / 24); drawWeapon(g, 0, 0, 0, 'sawnoff', 0); g.restore(); } },
   shotgun: { name: 'Дробовик', max: 1, type: 'gun', kind: 'shotgun', ammo: 'buckshot', mag: 6, rof: 0.85, dmg: 17, pellets: 7, spread: 0.3, rec: 2.6, desc: 'Семь картечин за выстрел. В упор рвёт зомби пополам.',
     icon: (g, s) => { g.save(); g.translate(s * 0.12, s * 0.55); g.scale(s / 34, s / 34); drawWeapon(g, 0, 0, 0, 'shotgun', 0); g.restore(); } },
   sniper: { name: 'Снайперская винтовка', max: 1, type: 'gun', kind: 'sniper', ammo: 'ammo762', mag: 5, rof: 1.2, dmg: 95, spread: 0.012, rec: 3, desc: 'Один выстрел — один зомби. С оптикой.',
@@ -392,6 +397,9 @@ const RECIPES = [
   { out: ['buckshot', 8], in: { gunpowder: 8, iron: 3 }, station: 'workbench' },
   { out: ['revolver', 1], in: { iron: 12, scrap: 8, plank: 2 }, station: 'workbench' },
   { out: ['shotgun', 1], in: { iron: 16, scrap: 12, plank: 6 }, station: 'workbench' },
+  { out: ['sawnoff', 1], in: { iron: 8, scrap: 6, plank: 2 }, station: 'workbench' },
+  // отпилить ствол целому дробовику: обрез можно получить и так
+  { out: ['sawnoff', 1], in: { shotgun: 1 }, station: 'workbench' },
 
   { out: ['ammo545', 12], in: { gunpowder: 8, iron: 3 }, station: 'workbench2' },
   { out: ['smg', 1], in: { iron: 24, scrap: 20, plank: 4 }, station: 'workbench2' },

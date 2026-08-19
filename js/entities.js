@@ -598,7 +598,8 @@ const TRADERS = [
     id: 'gunsmith', name: 'Оружейник', zone: 'city', at: 0.72, coat: '#4a4e52', hat: '#33373b',
     greet: 'Патроны есть. Стрелять научишься сам.',
     stock: [['ammo9', 20, 12], ['ammo545', 20, 16], ['ammo762', 20, 20], ['buckshot', 10, 14],
-            ['zinc9', 1, 90], ['pistol', 1, 120], ['shotgun', 1, 210], ['grenade', 1, 60]]
+            ['zinc9', 1, 90], ['pistol', 1, 120], ['sawnoff', 1, 140], ['shotgun', 1, 210],
+            ['grenade', 1, 60]]
   },
   {
     id: 'prospector', name: 'Старатель', zone: 'mine', at: 0.5, coat: '#7a5a34', hat: '#5c4426',
