@@ -58,6 +58,7 @@ const Game = {
     Player.inv.add('stone', 60);
     Player.inv.add('ladder', 12);
     Player.inv.add('home_flag', 1);
+    Player.inv.add('sawnoff', 1);
     Player.inv.add('shotgun', 1);
     Player.inv.add('buckshot', 40);
     Player.inv.add('bandage', 5);
@@ -74,6 +75,7 @@ const Game = {
     const dz = ZONES.find(z => z.id === 'dead');
     const armyLoot = [
       [['shotgun', 1], ['buckshot', 24]],
+      [['sawnoff', 1], ['buckshot', 16], ['bandage', 2]],
       [['smg', 1], ['zinc9', 1]],
       [['medkit', 2], ['splint', 2], ['antirad', 3]],
       [['filter', 4], ['scrap', 14], ['iron', 10]],
