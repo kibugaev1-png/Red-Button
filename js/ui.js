@@ -168,28 +168,48 @@ const UI = {
     this.bar(g, bx, by, bw, 12, P.hp, ['#8c2b26', '#d4574a'], Math.round(P.hp) + ' здоровье');
     this.bar(g, bx, by + 20, bw, 12, P.food, ['#7a5c1e', '#d8a83c'], Math.round(P.food) + ' / ' + FOOD_MAX + ' сытость', null, FOOD_MAX);
     this.bar(g, bx, by + 40, bw, 12, P.water, ['#1e5c72', '#3ca8d0'], Math.round(P.water) + ' / ' + WATER_MAX + ' вода', null, WATER_MAX);
+    // выносливость: пустая — не побежишь и слабо бьёшь
+    this.bar(g, bx, by + 60, bw, 9, P.stam, P.winded ? ['#6a5a20', '#a08a34'] : ['#3f6a3c', '#7fc06a'],
+      Math.round(P.stam) + (P.winded ? ' выдохся' : ' выносливость'), null, STAM_MAX);
+    // тепло
+    this.bar(g, bx, by + 76, bw, 9, P.warm, P.warm < 30 ? ['#2a4a7a', '#5f9ec4'] : ['#7a4a1e', '#d09848'],
+      Math.round(P.warm) + ' тепло', null, WARM_MAX);
 
     // радиация и фильтр
     const radW = 120;
-    g.fillStyle = 'rgba(0,0,0,0.5)'; g.beginPath(); g.roundRect(bx, by + 86, radW, 8, 4); g.fill();
+    g.fillStyle = 'rgba(0,0,0,0.5)'; g.beginPath(); g.roundRect(bx, by + 96, radW, 8, 4); g.fill();
     g.fillStyle = P.rad > 45 ? '#c8d24a' : '#7d8a3c';
-    g.beginPath(); g.roundRect(bx + 1, by + 87, (radW - 2) * clamp(P.rad / 100, 0, 1), 6, 3); g.fill();
-    this.text(g, 'радиация ' + Math.round(P.rad) + '%', bx + radW + 8, by + 94, P.rad > 45 ? '#d8e06a' : 'rgba(220,214,196,0.7)', 11, '600');
+    g.beginPath(); g.roundRect(bx + 1, by + 97, (radW - 2) * clamp(P.rad / 100, 0, 1), 6, 3); g.fill();
+    this.text(g, 'радиация ' + Math.round(P.rad) + '%', bx + radW + 8, by + 104, P.rad > 45 ? '#d8e06a' : 'rgba(220,214,196,0.7)', 11, '600');
 
-    if (P.mask) {
-      g.fillStyle = 'rgba(0,0,0,0.5)'; g.beginPath(); g.roundRect(bx, by + 100, radW, 8, 4); g.fill();
-      g.fillStyle = P.filterWear > 30 ? '#4a8a6a' : '#c07a3c';
-      g.beginPath(); g.roundRect(bx + 1, by + 101, (radW - 2) * clamp(P.filterWear / 100, 0, 1), 6, 3); g.fill();
-      this.text(g, 'фильтр ' + Math.round(P.filterWear) + '%', bx + radW + 8, by + 108, 'rgba(220,214,196,0.7)', 11, '600');
-    } else {
-      this.text(g, '⚠ ПРОТИВОГАЗ СНЯТ', bx, by + 108, '#e07a5a', 12, '800');
+    let ny = by + 110;
+    if (P.infection > 0) {
+      g.fillStyle = 'rgba(0,0,0,0.5)'; g.beginPath(); g.roundRect(bx, ny, radW, 8, 4); g.fill();
+      g.fillStyle = P.infection > 40 ? '#8fc060' : '#5f8a44';
+      g.beginPath(); g.roundRect(bx + 1, ny + 1, (radW - 2) * clamp(P.infection / 100, 0, 1), 6, 3); g.fill();
+      this.text(g, 'заражение ' + Math.round(P.infection) + '%', bx + radW + 8, ny + 8, '#a8d078', 11, '700');
+      ny += 14;
     }
+    if (P.mask) {
+      g.fillStyle = 'rgba(0,0,0,0.5)'; g.beginPath(); g.roundRect(bx, ny, radW, 8, 4); g.fill();
+      g.fillStyle = P.filterWear > 30 ? '#4a8a6a' : '#c07a3c';
+      g.beginPath(); g.roundRect(bx + 1, ny + 1, (radW - 2) * clamp(P.filterWear / 100, 0, 1), 6, 3); g.fill();
+      this.text(g, 'фильтр ' + Math.round(P.filterWear) + '%', bx + radW + 8, ny + 8, 'rgba(220,214,196,0.7)', 11, '600');
+      ny += 14;
+    } else {
+      this.text(g, '⚠ ПРОТИВОГАЗ СНЯТ', bx, ny + 8, '#e07a5a', 12, '800');
+      ny += 14;
+    }
+    // что надето
+    const wornList = [];
+    for (const k in P.worn) if (P.worn[k]) wornList.push(ITEMS[P.worn[k]].name);
+    if (wornList.length) { this.text(g, 'на себе: ' + wornList.join(', '), bx, ny + 8, 'rgba(180,190,170,0.6)', 11, '500'); ny += 14; }
 
     // тело: подсветка травм
     let wounds = [];
     for (const l of LIMBS) if (P.body[l.id].w > 0) wounds.push(l);
     if (wounds.length) {
-      let wy = by + 130;
+      let wy = ny + 22;
       this.text(g, 'ТРАВМЫ (B)', bx, wy, 'rgba(220,140,110,0.8)', 11, '800'); wy += 15;
       for (const l of wounds.slice(0, 4)) {
         const b = P.body[l.id];
@@ -205,7 +225,16 @@ const UI = {
     this.text(g, 'день ' + Game.day + ' · ' + (Game.nightAmount() > 0.5 ? 'ночь' : 'день'), W - 24, 52, 'rgba(200,190,160,0.6)', 12, '500', 'right');
     const z = zoneAtPx(P.x);
     this.text(g, z.name + ' · M — карта', W - 24, 72, z.color, 13, '700', 'right');
-    this.text(g, 'зомби рядом: ' + Zombies.list.length, W - 24, 90, 'rgba(200,190,160,0.4)', 11, '500', 'right');
+    this.text(g, Weather.cur.name.toLowerCase() + ' · зомби рядом: ' + Zombies.list.length,
+      W - 24, 90, Weather.cur.id === 'clear' ? 'rgba(200,190,160,0.4)' : Weather.cur.col, 11, '600', 'right');
+    // предупреждение об орде
+    if (Zombies.hordeNight()) {
+      const on = Zombies.hordeActive();
+      const a = on ? 0.55 + Math.sin(performance.now() / 260) * 0.35 : 0.75;
+      g.globalAlpha = a;
+      this.text(g, on ? '⚑ ОРДА ИДЁТ' : '⚑ сегодня ночью будет орда', W - 24, 150, '#e0603c', on ? 16 : 12, '800', 'right');
+      g.globalAlpha = 1;
+    }
     // монеты и навыки
     g.fillStyle = '#e8cf72';
     g.beginPath(); g.arc(W - 122, 108, 5.5, 0, 7); g.fill();
@@ -228,7 +257,17 @@ const UI = {
       this.text(g, it.name, W / 2, hy - 12, '#e8e2ca', 13, '700', 'center');
       if (it.type === 'gun') {
         const m = P.mag[it.kind] || 0, res = P.inv.count(it.ammo);
-        this.text(g, m + ' / ' + res + (P.reload > 0 ? '   перезарядка…' : ''), W / 2, hy - 30, m > 0 ? '#e8d8a0' : '#d07a5a', 15, '800', 'center');
+        const label = P.jam > 0 ? 'КЛИН — R' : m + ' / ' + res + (P.reload > 0 ? '   перезарядка…' : '');
+        this.text(g, label, W / 2, hy - 30, P.jam > 0 ? '#e08a4a' : m > 0 ? '#e8d8a0' : '#d07a5a', 15, '800', 'center');
+        // износ ствола: чем краснее, тем ближе перекос
+        const wear = P.gunWear[it.kind] || 0;
+        if (wear > 3) {
+          const ww = 90, wxp = W / 2 - ww / 2;
+          g.fillStyle = 'rgba(0,0,0,0.5)'; g.beginPath(); g.roundRect(wxp, hy - 46, ww, 5, 2.5); g.fill();
+          g.fillStyle = wear > 65 ? '#c04a2f' : wear > 35 ? '#c08a3c' : '#5f7f5a';
+          g.beginPath(); g.roundRect(wxp + 1, hy - 45, (ww - 2) * clamp(wear / 100, 0, 1), 3, 1.5); g.fill();
+          this.text(g, 'износ ' + Math.round(wear) + '%', W / 2 + ww / 2 + 8, hy - 41, 'rgba(200,190,160,0.55)', 10, '600');
+        }
       } else if (it.desc) {
         this.text(g, it.desc, W / 2, hy - 30, 'rgba(200,190,160,0.55)', 11, '500', 'center');
       }
@@ -650,36 +689,97 @@ const UI = {
   // ---- торговец ----
   shopTrader: null,
 
+  shopTab: 'buy', shopScroll: 0,
+
   drawShop(g) {
     const W = this.W, H = this.H;
+    const def = this.shopTrader;
     g.fillStyle = 'rgba(0,0,0,0.66)'; g.fillRect(0, 0, W, H);
-    const pw = 900, ph = 560, px = W / 2 - pw / 2, py = H / 2 - ph / 2;
+    const pw = 920, ph = 600, px = W / 2 - pw / 2, py = H / 2 - ph / 2;
     const disc = 1 - 0.08 * Player.skills.trade;
-    const who = this.shopTrader ? this.shopTrader.name : 'Торговец';
+    const who = def ? def.name : 'Торговец';
     this.panel(g, px, py, pw, ph, who + (Player.skills.trade ? ' · скидка ' + Math.round((1 - disc) * 100) + '%' : ''));
-    if (this.shopTrader) this.text(g, this.shopTrader.greet, px + pw - 16, py + 26, 'rgba(200,190,160,0.55)', 12, '500', 'right');
+    if (def) this.text(g, def.greet, px + 20, py + 50, 'rgba(200,190,160,0.55)', 12, '500');
     this.text(g, Player.coins + ' монет', px + pw - 24, py + 26, '#e8cf72', 15, '800', 'right');
 
-    let i = 0;
-    const cw = (pw - 40 - 2 * 12) / 3, chh = 62;
-    for (const [id, n, price] of SHOP) {
-      const x = px + 20 + (i % 3) * (cw + 12), y = py + 56 + Math.floor(i / 3) * (chh + 8);
-      const cost = Math.max(1, Math.round(price * disc));
-      const can = Player.coins >= cost;
-      const over = Input.mx > x && Input.mx < x + cw && Input.my > y && Input.my < y + chh;
+    // вкладки: купить у него / продать ему
+    if (this.btn(g, px + pw - 250, py + 44, 110, 26, 'Купить', this.shopTab === 'buy')) { this.shopTab = 'buy'; this.shopScroll = 0; }
+    if (this.btn(g, px + pw - 132, py + 44, 110, 26, 'Продать', this.shopTab === 'sell')) { this.shopTab = 'sell'; this.shopScroll = 0; }
+
+    if (!def) { this.text(g, 'Esc — уйти', px + pw - 24, py + ph - 16, 'rgba(200,190,160,0.45)', 12, '500', 'right'); return; }
+    Shop.ensure();
+
+    const listTop = py + 82, listH = ph - 82 - 42;
+    const cw = (pw - 40 - 2 * 12) / 3, chh = 66, rows = Math.floor(listH / (chh + 8));
+
+    // ---- что показываем ----
+    const entries = [];
+    if (this.shopTab === 'buy') {
+      for (const [id, n, price] of def.stock) {
+        entries.push({ id, n, price: Math.max(1, Math.round(price * disc)), left: Shop.stockLeft(def, id) });
+      }
+    } else {
+      // всё из рюкзака, что этот торговец берёт
+      const seen = {};
+      for (const slot of Player.inv.slots) {
+        if (!slot) continue;
+        const p = Shop.sellPrice(def, slot.id);
+        if (!p) continue;
+        if (seen[slot.id]) { seen[slot.id].have += slot.n; continue; }
+        seen[slot.id] = { id: slot.id, n: 1, price: p, have: slot.n, sell: true };
+        entries.push(seen[slot.id]);
+      }
+    }
+
+    // прокрутка колесом
+    const maxScroll = Math.max(0, Math.ceil(entries.length / 3) - rows);
+    if (Input.wheel && maxScroll > 0) {
+      this.shopScroll = clamp(this.shopScroll + Input.wheel, 0, maxScroll);
+      Input.wheel = 0;
+    }
+    this.shopScroll = clamp(this.shopScroll, 0, maxScroll);
+
+    if (!entries.length) {
+      this.text(g, this.shopTab === 'buy' ? 'Всё раскупили. Приходи завтра.' : 'Он такого не берёт. Ищи другого торговца.',
+        px + pw / 2, listTop + 60, 'rgba(200,190,160,0.5)', 14, '600', 'center');
+    }
+
+    const from = this.shopScroll * 3;
+    for (let k = 0; k < rows * 3 && from + k < entries.length; k++) {
+      const e = entries[from + k];
+      const x = px + 20 + (k % 3) * (cw + 12), y = listTop + Math.floor(k / 3) * (chh + 8);
+      const out = !e.sell && e.left <= 0;
+      const can = e.sell ? true : (Player.coins >= e.price && !out);
+      const over = this.guard <= 0 && Input.mx > x && Input.mx < x + cw && Input.my > y && Input.my < y + chh;
       g.fillStyle = over && can ? 'rgba(200,185,120,0.16)' : 'rgba(255,255,255,0.045)';
       g.beginPath(); g.roundRect(x, y, cw, chh, 8); g.fill();
-      g.strokeStyle = can ? 'rgba(200,190,140,0.35)' : 'rgba(150,140,120,0.15)';
+      g.strokeStyle = can ? (e.sell ? 'rgba(140,190,150,0.4)' : 'rgba(200,190,140,0.35)') : 'rgba(150,140,120,0.15)';
       g.lineWidth = 1; g.beginPath(); g.roundRect(x, y, cw, chh, 8); g.stroke();
-      g.save(); g.translate(x + 8, y + 12); if (!can) g.globalAlpha = 0.45; ITEMS[id].icon(g, 38); g.restore();
-      this.text(g, ITEMS[id].name + (n > 1 ? ' ×' + n : ''), x + 54, y + 26, can ? '#e8e2ca' : 'rgba(200,190,160,0.5)', 13, '700');
-      this.text(g, cost + ' монет', x + 54, y + 44, can ? '#e8cf72' : 'rgba(210,180,110,0.45)', 12, '600');
+      g.save(); g.translate(x + 8, y + 14); if (!can) g.globalAlpha = 0.4; ITEMS[e.id].icon(g, 38); g.restore();
+      this.text(g, ITEMS[e.id].name + (e.n > 1 ? ' ×' + e.n : ''), x + 54, y + 24,
+        can ? '#e8e2ca' : 'rgba(200,190,160,0.5)', 13, '700');
+      this.text(g, (e.sell ? '+' : '') + e.price + ' монет', x + 54, y + 42,
+        e.sell ? '#8fc07a' : (can ? '#e8cf72' : 'rgba(210,180,110,0.45)'), 12, '600');
+      this.text(g, e.sell ? 'у тебя ' + e.have + ' шт' : (out ? 'распродано до завтра' : 'осталось ' + e.left),
+        x + 54, y + 58, out ? '#c0705a' : 'rgba(200,190,160,0.45)', 11, '500');
+
       if (over && Input.mclick && can) {
-        Player.coins -= cost;
-        if (Player.inv.add(id, n) > 0) Drops.add(Player.x, Player.y - 20, id, n);
-        Player.say('Куплено: ' + ITEMS[id].name);
+        if (e.sell) {
+          Player.inv.remove(e.id, 1);
+          Player.coins += e.price;
+          Player.say('Продал: ' + ITEMS[e.id].name + ' за ' + e.price);
+        } else {
+          Player.coins -= e.price;
+          Shop.takeOne(def, e.id);
+          if (Player.inv.add(e.id, e.n) > 0) Drops.add(Player.x, Player.y - 20, e.id, e.n);
+          Player.say('Куплено: ' + ITEMS[e.id].name);
+        }
       }
-      i++;
+    }
+
+    if (maxScroll > 0) {
+      this.text(g, 'колесо — листать (' + (this.shopScroll + 1) + '/' + (maxScroll + 1) + ')',
+        px + 24, py + ph - 16, 'rgba(200,190,160,0.45)', 12, '500');
     }
     this.text(g, 'Esc — уйти', px + pw - 24, py + ph - 16, 'rgba(200,190,160,0.45)', 12, '500', 'right');
   },
@@ -709,11 +809,11 @@ const UI = {
   drawOptions(g) {
     const W = this.W, H = this.H;
     g.fillStyle = 'rgba(0,0,0,0.72)'; g.fillRect(0, 0, W, H);
-    const pw = 520, ph = 500, px = W / 2 - pw / 2, py = H / 2 - ph / 2;
+    const pw = 520, ph = 560, px = W / 2 - (pw + 436) / 2, py = H / 2 - ph / 2;
     this.panel(g, px, py, pw, ph, 'Управление');
     const rows = [
       ['A / D', 'идти влево-вправо'],
-      ['Shift', 'бежать (тратит еду и воду)'],
+      ['Shift', 'бежать (жжёт выносливость, еду и воду)'],
       ['Space / W', 'подпрыгнуть'],
       ['ЛКМ', 'копать породу · стрелять'],
       ['ПКМ', 'применить предмет: поставить, съесть, надеть'],
@@ -725,8 +825,18 @@ const UI = {
       ['I', 'инвентарь (30 ячеек) и снаряжение'],
       ['B', 'состояние тела и лечение'],
       ['C', 'крафт'],
-      ['R', 'перезарядка'],
+      ['R', 'перезарядка · снять клин'],
       ['Esc', 'пауза']
+    ];
+    const hard = [
+      'Выносливость: бег, прыжки, удары и кирка. Пустая — идёшь шагом.',
+      'Тепло: ночь и дождь студят. Греют костёр, дом, ватник, чай и похлёбка.',
+      'Заражение: приходит с укусом, само не проходит. Нужен антибиотик.',
+      'Износ ствола: чем больше стрелял, тем чаще клин. Лечится маслом.',
+      'Орда: каждую третью ночь. Днём приходит предупреждение.',
+      'Погода: дождь студит, кислотный жжёт, буря поднимает мёртвых.',
+      'Набитый рюкзак замедляет и быстрее выматывает.',
+      'У каждого торговца свой товар, свой запас на день и своя скупка.'
     ];
     let y = py + 60;
     for (const [k, v] of rows) {
@@ -734,6 +844,25 @@ const UI = {
       this.text(g, k, px + 32, y + 4, '#e0d8bc', 12, '700');
       this.text(g, v, px + 130, y + 4, 'rgba(200,190,160,0.75)', 12, '500');
       y += 31;
+    }
+    // правая колонка: что изменилось в правилах выживания
+    const hx2 = px + pw + 16;
+    this.panel(g, hx2, py, 420, ph, 'Чем эта игра тебя убьёт');
+    let hy2 = py + 62;
+    for (const line of hard) {
+      g.fillStyle = '#c0562f';
+      g.beginPath(); g.arc(hx2 + 24, hy2 - 4, 2.6, 0, 7); g.fill();
+      const words = line.split(' ');
+      let cur = '';
+      const lines = [];
+      g.font = '500 12px system-ui, sans-serif';
+      for (const w of words) {
+        const test = cur ? cur + ' ' + w : w;
+        if (g.measureText(test).width > 356) { lines.push(cur); cur = w; } else cur = test;
+      }
+      if (cur) lines.push(cur);
+      for (const l of lines) { this.text(g, l, hx2 + 36, hy2, 'rgba(210,202,178,0.85)', 12, '500'); hy2 += 16; }
+      hy2 += 10;
     }
     if (this.btn(g, px + 20, py + ph - 56, pw - 40, 40, this.fromMenu ? 'Назад в меню' : 'Продолжить')) {
       if (this.fromMenu) { this.screen = 'menu'; this.fromMenu = false; }

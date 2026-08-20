@@ -1,6 +1,88 @@
 // game.js — цикл, камера, фон, свет, взаимодействие
 'use strict';
 
+// ---- погода ----
+// Пять состояний, каждое меняет и картинку, и правила выживания.
+// Дождь студит и мешает видеть, кислотный дождь вдобавок жжёт радиацией,
+// буря поднимает зомби даже днём. Погода сама сменяется каждые несколько минут
+const WEATHERS = [
+  { id: 'clear', name: 'Ясно',              w: 34, wet: 0,    dark: 0,    rad: 0,   zomb: 1,   col: '#c9c2ac' },
+  { id: 'fog',   name: 'Туман',             w: 20, wet: 0.15, dark: 0.18, rad: 0,   zomb: 1.2, col: '#a8b0b8' },
+  { id: 'rain',  name: 'Дождь',             w: 22, wet: 1,    dark: 0.3,  rad: 0,   zomb: 1.15,col: '#7aa0c0' },
+  { id: 'acid',  name: 'Кислотный дождь',   w: 10, wet: 1,    dark: 0.42, rad: 1.6, zomb: 1.3, col: '#9ac04a' },
+  { id: 'storm', name: 'Буря',              w: 8,  wet: 1.3,  dark: 0.55, rad: 0.5, zomb: 1.8, col: '#c05a4a' }
+];
+
+const Weather = {
+  cur: WEATHERS[0], next: null, t: 120, fade: 1, drops: [], flash: 0,
+  reset() { this.cur = WEATHERS[0]; this.t = 150; this.fade = 1; this.drops.length = 0; this.flash = 0; },
+  roll() {
+    // с каждым прожитым днём ясной погоды всё меньше — мир портится
+    const bad = Math.min(2.6, 1 + (Game.day - 1) * 0.16);
+    let total = 0;
+    const ws = WEATHERS.map(w => {
+      const weight = w.id === 'clear' ? w.w / bad : w.w * bad;
+      total += weight; return { w, weight };
+    });
+    let r = Math.random() * total;
+    for (const e of ws) { r -= e.weight; if (r <= 0) return e.w; }
+    return WEATHERS[0];
+  },
+  wetness() { return this.cur.wet * this.fade; },
+  darkness() { return this.cur.dark * this.fade; },
+  update(dt) {
+    this.t -= dt;
+    if (this.t <= 0) {
+      const w = this.roll();
+      this.t = rnd(90, 260);
+      if (w !== this.cur) {
+        this.cur = w; this.fade = 0;
+        Player.say('Погода: ' + w.name.toLowerCase());
+      }
+    }
+    this.fade = Math.min(1, this.fade + dt * 0.25);
+    if (this.cur.id === 'storm' && Math.random() < dt * 0.22) this.flash = 0.5;
+    if (this.flash > 0) this.flash -= dt;
+  },
+  // капли рисуются в экранных координатах — дёшево и всегда попадают в кадр
+  draw(g) {
+    // туман: несколько мягких полос, ползущих поперёк кадра
+    if (this.cur.id === 'fog' && this.fade > 0.02) {
+      g.save();
+      for (let i = 0; i < 4; i++) {
+        const y = UI.H * (0.32 + i * 0.16) + Math.sin(Game.time * 0.2 + i) * 18;
+        const off = (Game.cam.x * (0.05 + i * 0.03) + Game.time * (8 + i * 5)) % (UI.W + 600) - 300;
+        const fg = g.createLinearGradient(0, y - 90, 0, y + 90);
+        fg.addColorStop(0, 'rgba(190,198,205,0)');
+        fg.addColorStop(0.5, 'rgba(190,198,205,' + (0.26 * this.fade) + ')');
+        fg.addColorStop(1, 'rgba(190,198,205,0)');
+        g.fillStyle = fg;
+        g.beginPath(); g.ellipse(off + UI.W / 2, y, UI.W * 0.9, 90, 0, 0, 7); g.fill();
+      }
+      g.restore();
+    }
+    const wet = this.wetness();
+    if (wet <= 0.02) return;
+    const n = Math.round(wet * 260);
+    const acid = this.cur.id === 'acid';
+    g.save();
+    g.strokeStyle = acid ? 'rgba(170,205,110,0.5)' : 'rgba(180,205,230,0.42)';
+    g.lineWidth = 1.1;
+    const t = Game.time * 60;
+    for (let i = 0; i < n; i++) {
+      const h = hash2(i * 3, 11), h2 = hash2(i * 7, 23);
+      const sp = 420 + h2 * 520;
+      const x = (h * UI.W + Game.cam.x * 0.6 + (this.cur.id === 'storm' ? t * 3 : t * 0.6)) % UI.W;
+      const y = (h2 * UI.H + t * sp * 0.06) % UI.H;
+      const len = 9 + h * 14;
+      const skew = this.cur.id === 'storm' ? 7 : 2.5;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x - skew, y + len); g.stroke();
+    }
+    g.restore();
+    if (this.flash > 0.2) { g.fillStyle = 'rgba(220,230,255,' + (this.flash - 0.2) * 0.7 + ')'; g.fillRect(0, 0, UI.W, UI.H); }
+  }
+};
+
 const Game = {
   canvas: null, ctx: null, lightCanvas: null, lctx: null,
   cam: { x: 0, y: 0 }, zoom: 2.1,
@@ -36,6 +118,7 @@ const Game = {
     Machines.list.length = 0; Machines.torches.length = 0;
     Player.dead = false;
     Player.hp = 100; Player.food = FOOD_MAX; Player.water = WATER_MAX; Player.rad = 6;
+    Player.stam = STAM_MAX; Player.warm = WARM_MAX; Player.infection = 0;
     Player.mask = false; Player.filterWear = 100;
     Player.init();
     this.time = DAY_LEN * 0.34; this.day = 1;
@@ -50,19 +133,20 @@ const Game = {
     Nodes.seed();
     Throwables.list.length = 0;
     Explosions.list.length = 0;
+    Weather.reset();
 
     // стартовый набор строителя: план, молоток и материал на первый дом
     Player.inv.add('plan', 1);
     Player.inv.add('hammer', 1);
-    Player.inv.add('wood', 300);
-    Player.inv.add('stone', 60);
-    Player.inv.add('ladder', 12);
+    // Хардкор: стартового добра ощутимо меньше. Дробовик, аптечку и большую
+    // часть материала теперь надо добывать самому
+    Player.inv.add('wood', 120);
+    Player.inv.add('stone', 24);
+    Player.inv.add('ladder', 6);
     Player.inv.add('home_flag', 1);
     Player.inv.add('sawnoff', 1);
-    Player.inv.add('shotgun', 1);
-    Player.inv.add('buckshot', 40);
-    Player.inv.add('bandage', 5);
-    Player.inv.add('medkit', 1);
+    Player.inv.add('buckshot', 8);
+    Player.inv.add('bandage', 2);
     for (const m of Missions.list) { m.state = 0; m.from = 0; }
 
     // стартовый лут в пустоши: противогаз рядом и два ящика без повторов
@@ -126,12 +210,18 @@ const Game = {
   // Функция перехода удалена целиком, чтобы её нельзя было вызвать случайно
 
   sleep() {
+    // Спать в ночь орды нельзя: они уже под дверью
+    if (Zombies.hordeActive()) { Player.say('Не до сна — орда уже здесь'); return; }
     this.time = DAY_LEN * 0.3; this.day++;
-    Player.hp = clamp(Player.hp + 14, 0, 100);
-    Player.food = clamp(Player.food - 40, 1, FOOD_MAX);
-    Player.water = clamp(Player.water - 46, 1, WATER_MAX);
+    Player.hp = clamp(Player.hp + 10, 0, 100);
+    Player.food = clamp(Player.food - 70, 1, FOOD_MAX);
+    Player.water = clamp(Player.water - 80, 1, WATER_MAX);
+    Player.stam = STAM_MAX;
+    Player.warm = clamp(Player.warm + 40, 0, WARM_MAX);
+    // заражение за ночь только крепнет
+    if (Player.infection > 0) Player.infection = clamp(Player.infection + 12, 0, 100);
     Zombies.list.length = 0;
-    Player.say('Утро. Ты спал в своей кровати');
+    Player.say('Утро. Ты спал в своей кровати' + (Zombies.hordeNight() ? '. Сегодня ночью придёт орда' : ''));
   },
 
   // возрождение на своей кровати: мир и вещи остаются, тело подлечено
@@ -144,8 +234,9 @@ const Game = {
     Player.x = (bx + bed.w / 2) * CELL;
     Player.y = (by - 1) * CELL;
     Player.vx = 0; Player.vy = 0; Player.fallStart = null;
-    Player.hp = 45; Player.food = Math.max(Player.food, 110); Player.water = Math.max(Player.water, 110);
-    Player.rad = 0;
+    Player.hp = 40; Player.food = Math.max(Player.food, 90); Player.water = Math.max(Player.water, 90);
+    Player.rad = 0; Player.stam = STAM_MAX * 0.5; Player.warm = WARM_MAX * 0.7;
+    // заражение возрождение не лечит — с ним придётся разбираться отдельно
     for (const l of LIMBS) { const b = Player.body[l.id]; b.w = Math.min(b.w, 1); b.bleed = false; }
     Zombies.list.length = 0;
     this.time = DAY_LEN * 0.3; this.day++;
@@ -238,7 +329,7 @@ const Game = {
     if (!Player.dead && (Input.once('Period') || Input.once('KeyG'))) Player.dropHand();
     for (let i = 0; i < 6; i++) if (Input.once('Digit' + (i + 1))) Player.hotbar = i;
     // приближение и отдаление: колесо мыши или щипок на трекпаде
-    if (Input.zoomDelta) {
+    if (Input.zoomDelta && UI.screen === null) {
       this.zoomTarget = clamp((this.zoomTarget || this.zoom) * (1 + Input.zoomDelta), 0.55, 4.2);
       this.zoomHint = 1.6;
     }
@@ -258,6 +349,13 @@ const Game = {
       if (this.time > DAY_LEN) { this.time -= DAY_LEN; this.day++; }
       if (!this.introDone) this.introT += dt;
 
+      Weather.update(dt);
+      // объявление орды один раз за сутки, на закате
+      if (Zombies.hordeNight() && this.nightAmount() > 0.3 && this.hordeWarned !== this.day) {
+        this.hordeWarned = this.day;
+        Player.say('Слышишь? Их много. Сегодня орда — запирайся');
+        Floaters.push(Player.x, Player.y - 76, 'ОРДА', '#e0603c');
+      }
       Player.update(dt);
       Zombies.update(dt);
       Bullets.update(dt);
@@ -288,7 +386,10 @@ const Game = {
       } else if (c) {
         this.hint = c.kind === 'trader' ? 'E — торговать: ' + c.trader.def.name : 'E — доска заданий';
         if (Input.once('KeyE')) {
-          if (c.kind === 'trader') { UI.shopTrader = c.trader.def; Player.say(c.trader.def.greet); UI.screen = 'shop'; }
+          if (c.kind === 'trader') {
+            UI.shopTrader = c.trader.def; UI.shopTab = 'buy'; UI.shopScroll = 0;
+            Player.say(c.trader.def.greet); UI.screen = 'shop';
+          }
           else UI.screen = 'board';
         }
       } else if (d) {
@@ -487,7 +588,7 @@ const Game = {
     l.globalCompositeOperation = 'source-over';
 
     // базовая тьма ночи
-    const nAlpha = night * 0.6;   // ночью темно, но силуэты читаются — лунный свет
+    const nAlpha = clamp(night * 0.66 + Weather.darkness() * 0.5, 0, 0.9);   // погода темнит дополнительно
     if (nAlpha > 0.01) { l.fillStyle = 'rgba(8,11,22,' + nAlpha + ')'; l.fillRect(0, 0, UI.W, UI.H); }
 
     // подземная тьма: три слоя, повторяющие рельеф — без вертикальных швов
@@ -584,6 +685,7 @@ const Game = {
       drawHuman(g, Player.x, Player.y, Player.look, {
         face: Player.face, phase: Player.phase, moving: Math.abs(Player.vx) > 0.1,
         air: !Player.onGround, mask: Player.mask,
+        coat: Player.worn.coat, hood: Player.worn.hood,
         dig: Player.digAnim,
         item: it ? (it.type === 'tool' ? (it.wood ? 'axe' : 'pick') : it.type === 'melee' ? 'club' : null) : null,
         aim: it && it.type === 'gun' ? it.kind : null,
@@ -609,7 +711,24 @@ const Game = {
     g.restore();
 
     this.drawLight(g);
+    Weather.draw(g);
     this.drawGrade(g);
+    // холод: иней по краям кадра и лёгкое посинение
+    if (Player.warm < 40 && !Player.dead) {
+      const c = (40 - Player.warm) / 40;
+      const fg = g.createRadialGradient(UI.W / 2, UI.H / 2, UI.H * 0.3, UI.W / 2, UI.H / 2, UI.H * 0.95);
+      fg.addColorStop(0, 'rgba(120,170,220,0)');
+      fg.addColorStop(1, 'rgba(150,195,235,' + (c * 0.3) + ')');
+      g.fillStyle = fg; g.fillRect(0, 0, UI.W, UI.H);
+    }
+    // заражение: мутный зелёный пульс по краям
+    if (Player.infection > 25 && !Player.dead) {
+      const c = clamp((Player.infection - 25) / 75, 0, 1);
+      const ig = g.createRadialGradient(UI.W / 2, UI.H / 2, UI.H * 0.35, UI.W / 2, UI.H / 2, UI.H);
+      ig.addColorStop(0, 'rgba(70,110,60,0)');
+      ig.addColorStop(1, 'rgba(84,124,64,' + (c * (0.26 + Math.sin(performance.now() / 700) * 0.06)) + ')');
+      g.fillStyle = ig; g.fillRect(0, 0, UI.W, UI.H);
+    }
 
     // прицел
     if (!Player.dead && UI.screen === null) {
@@ -636,6 +755,15 @@ const Game = {
       g.beginPath(); g.ellipse(UI.W / 2, UI.H / 2, UI.W * 0.505, UI.H * 0.55, 0, 0, 7); g.stroke();
       g.fillStyle = 'rgba(130,160,140,0.028)'; g.fillRect(0, 0, UI.W, UI.H);
     }
+    // плёночное зерно: чуть-чуть, только чтобы убрать пластиковую гладкость
+    g.save();
+    g.globalAlpha = 0.045;
+    for (let i = 0; i < 130; i++) {
+      g.fillStyle = Math.random() < 0.5 ? '#fff' : '#000';
+      g.fillRect(Math.random() * UI.W, Math.random() * UI.H, 1.6, 1.6);
+    }
+    g.restore();
+
     // красный пульс при низком здоровье
     if (Player.hp < 35 && !Player.dead) {
       g.fillStyle = 'rgba(140,20,16,' + (0.10 + Math.sin(performance.now() / 220) * 0.05) * (1 - Player.hp / 35) + ')';

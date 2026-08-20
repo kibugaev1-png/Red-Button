@@ -323,6 +323,39 @@ const ITEMS = {
     icon: (g, s) => { g.fillStyle = '#4a7a52'; g.beginPath(); g.roundRect(s * 0.3, s * 0.26, s * 0.4, s * 0.5, s * 0.14); g.fill();
       g.fillStyle = '#d8e0cc'; g.beginPath(); g.roundRect(s * 0.3, s * 0.26, s * 0.4, s * 0.24, s * 0.14); g.fill();
       g.fillStyle = '#2f4a34'; g.fillRect(s * 0.36, s * 0.55, s * 0.28, s * 0.06); } },
+  antibiotic: { name: 'Антибиотик', max: 10, type: 'med', cure: 70, hp: 4, desc: 'Гасит заражение от укуса. Больше ничего не лечит.',
+    icon: (g, s) => { g.fillStyle = '#d8d2c2'; g.beginPath(); g.roundRect(s * 0.3, s * 0.22, s * 0.4, s * 0.56, s * 0.16); g.fill();
+      g.fillStyle = '#3f7a8a'; g.beginPath(); g.roundRect(s * 0.3, s * 0.5, s * 0.4, s * 0.28, s * 0.16); g.fill();
+      g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(s * 0.36, s * 0.28, s * 0.06, s * 0.4); } },
+  coat: { name: 'Ватник', max: 1, type: 'wear', slot: 'coat', warm: 38, desc: 'ПКМ — надеть. Ночью без него холодно.',
+    icon: (g, s) => { g.fillStyle = '#5c5238'; g.beginPath(); g.roundRect(s * 0.22, s * 0.26, s * 0.56, s * 0.54, s * 0.08); g.fill();
+      g.fillStyle = '#6e6244'; g.fillRect(s * 0.22, s * 0.26, s * 0.56, s * 0.1);
+      g.fillStyle = '#403a28'; g.fillRect(s * 0.47, s * 0.3, s * 0.06, s * 0.5);
+      g.fillStyle = '#8a7a52'; for (let i = 0; i < 3; i++) g.fillRect(s * 0.44, s * (0.4 + i * 0.13), s * 0.05, s * 0.05); } },
+  hood: { name: 'Плащ-дождевик', max: 1, type: 'wear', slot: 'hood', warm: 10, rainproof: 0.75, desc: 'ПКМ — надеть. Дождь почти не мочит.',
+    icon: (g, s) => { g.fillStyle = '#3f5a52'; g.beginPath(); g.moveTo(s * 0.5, s * 0.18); g.lineTo(s * 0.84, s * 0.8);
+      g.lineTo(s * 0.16, s * 0.8); g.fill();
+      g.fillStyle = '#57786c'; g.beginPath(); g.ellipse(s * 0.5, s * 0.3, s * 0.16, s * 0.12, 0, Math.PI, 0); g.fill();
+      g.fillStyle = 'rgba(255,255,255,0.16)'; g.fillRect(s * 0.44, s * 0.34, s * 0.05, s * 0.44); } },
+  gunoil: { name: 'Ружейное масло', max: 10, type: 'oil', desc: 'ПКМ — вычистить ствол в руке. Снимает износ и клин.',
+    icon: (g, s) => { g.fillStyle = '#6a4a24'; g.beginPath(); g.roundRect(s * 0.32, s * 0.34, s * 0.34, s * 0.46, s * 0.06); g.fill();
+      g.fillStyle = '#c9a24c'; g.fillRect(s * 0.36, s * 0.44, s * 0.26, s * 0.2);
+      g.fillStyle = '#4a4d52'; g.beginPath(); g.moveTo(s * 0.44, s * 0.34); g.lineTo(s * 0.7, s * 0.14);
+      g.lineTo(s * 0.76, s * 0.2); g.lineTo(s * 0.52, s * 0.34); g.fill(); } },
+  tea: { name: 'Горячий чай', max: 8, type: 'drink', water: 24, warm: 46, psy: 8, desc: 'Греет изнутри. Варится на костре.',
+    icon: (g, s) => { g.fillStyle = '#b9b3a2'; g.beginPath(); g.roundRect(s * 0.26, s * 0.38, s * 0.42, s * 0.38, s * 0.06); g.fill();
+      g.fillStyle = '#7a4a24'; g.beginPath(); g.roundRect(s * 0.3, s * 0.44, s * 0.34, s * 0.14, s * 0.03); g.fill();
+      g.strokeStyle = '#b9b3a2'; g.lineWidth = s * 0.05;
+      g.beginPath(); g.arc(s * 0.72, s * 0.54, s * 0.1, -1.2, 1.2); g.stroke();
+      g.strokeStyle = 'rgba(230,230,220,0.5)'; g.lineWidth = s * 0.035;
+      g.beginPath(); g.moveTo(s * 0.4, s * 0.34); g.quadraticCurveTo(s * 0.48, s * 0.24, s * 0.4, s * 0.16); g.stroke(); } },
+  stew: { name: 'Похлёбка', max: 8, type: 'food', food: 44, water: 12, warm: 34, psy: 10, desc: 'Горячая. Держит и сытость, и тепло.',
+    icon: (g, s) => { g.fillStyle = '#6f7378'; g.beginPath(); g.ellipse(s * 0.5, s * 0.6, s * 0.32, s * 0.2, 0, 0, 7); g.fill();
+      g.fillStyle = '#8a5a2a'; g.beginPath(); g.ellipse(s * 0.5, s * 0.54, s * 0.27, s * 0.14, 0, 0, 7); g.fill();
+      g.fillStyle = '#c9a24c'; g.beginPath(); g.arc(s * 0.42, s * 0.54, s * 0.04, 0, 7); g.fill();
+      g.beginPath(); g.arc(s * 0.6, s * 0.57, s * 0.035, 0, 7); g.fill();
+      g.strokeStyle = 'rgba(230,230,220,0.45)'; g.lineWidth = s * 0.035;
+      g.beginPath(); g.moveTo(s * 0.44, s * 0.36); g.quadraticCurveTo(s * 0.52, s * 0.26, s * 0.44, s * 0.18); g.stroke(); } },
   map_caves: { name: 'Карта пещер', max: 1, type: 'quest', desc: 'Отмечены входы в подземные комплексы. Пока не читается.',
     icon: (g, s) => { g.fillStyle = '#cfc3a0'; g.beginPath(); g.moveTo(s * 0.16, s * 0.3); g.lineTo(s * 0.5, s * 0.24);
       g.lineTo(s * 0.84, s * 0.34); g.lineTo(s * 0.82, s * 0.76); g.lineTo(s * 0.48, s * 0.82); g.lineTo(s * 0.18, s * 0.72); g.fill();
@@ -417,7 +450,14 @@ const RECIPES = [
   { out: ['copper', 1], in: { copper_ore: 2 }, station: 'furnace', fuel: 1 },
   { out: ['concrete', 4], in: { stone: 4, clay: 2 }, station: 'furnace', fuel: 1 },
 
+  { out: ['coat', 1], in: { rag: 14, stick: 2 }, station: 'workbench' },
+  { out: ['hood', 1], in: { rag: 8, scrap: 2 }, station: 'workbench' },
+  { out: ['gunoil', 2], in: { lowgrade: 2, rag: 1 }, station: 'workbench' },
+  { out: ['antibiotic', 1], in: { clay: 3, copper: 2, rag: 2 }, station: 'workbench2' },
+
   { out: ['potato_baked', 1], in: { potato: 1 }, station: 'campfire' },
+  { out: ['tea', 1], in: { canteen_clean: 1, wood: 1 }, station: 'campfire' },
+  { out: ['stew', 1], in: { potato: 2, canteen_clean: 1, meat_rot: 1 }, station: 'campfire' },
   { out: ['canteen_clean', 1], in: { canteen_dirty: 1 }, station: 'campfire' },
   { out: ['seeds', 2], in: { potato: 1 }, station: 'campfire' }
 ];

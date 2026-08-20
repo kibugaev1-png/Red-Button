@@ -27,12 +27,26 @@ const SKILLS = [
 const SKILL_MAX = 5;
 function skillCost(lvl) { return 10 + lvl * 8; }
 
+// направление ходьбы по клавишам: нужно ещё до того, как посчитан разгон
+function ax0() {
+  let a = 0;
+  if (Input.isDown('KeyA') || Input.isDown('ArrowLeft')) a -= 1;
+  if (Input.isDown('KeyD') || Input.isDown('ArrowRight')) a += 1;
+  return a;
+}
+
 const Player = {
   x: 0, y: 0, vx: 0, vy: 0, w: 13, h: 54,
   coins: 0, kills: 0,
   skills: { dig: 0, speed: 0, legs: 0, lungs: 0, meta: 0, aim: 0, medic: 0, trade: 0 },
   face: 1, phase: 0, onGround: false, fallStart: null,
   hp: 100, food: 240, water: 220, psy: 100, rad: 0,
+  // Хардкорные шкалы. Выносливость тратится на бег, прыжки, удары и копание.
+  // Тепло уходит ночью, под дождём и на высоте, возвращается у огня и в доме.
+  // Заражение приходит с укусом и само не проходит — только антибиотик
+  stam: STAM_MAX, warm: WARM_MAX, infection: 0, shiver: 0,
+  worn: { coat: null, hood: null },      // надетая одежда
+  gunWear: {}, jam: 0,                   // износ стволов и клин
   mask: null,            // {filter: 0..100} — надет
   filterWear: 100,
   look: { skin: 1, hair: 0, hairStyle: 0, beard: true, name: 'Выживший' },
@@ -58,6 +72,9 @@ const Player = {
 
   init() {
     this.inv = new Inventory(30);
+    this.stam = STAM_MAX; this.warm = WARM_MAX; this.infection = 0; this.shiver = 0;
+    this.worn = { coat: null, hood: null };
+    this.gunWear = {}; this.jam = 0;
     for (const l of LIMBS) this.body[l.id] = { w: 0, bleed: false };
     this.x = World.spawnX * CELL;
     this.y = (World.surface[World.spawnX] - 1) * CELL;
@@ -140,9 +157,18 @@ const Player = {
 
   update(dt) {
     if (this.dead) return;
-    const speed = 1.65 * this.legPenalty() * (1 + 0.08 * this.skills.speed);
-    const sprint = Input.isDown('ShiftLeft') || Input.isDown('ShiftRight')
-      ? 1 + 0.55 * clamp(this.legPenalty(), 0.35, 1) : 1;
+    // Набитый рюкзак тянет вниз: больше двух третей занятых ячеек — идёшь медленнее
+    const filled = this.inv.slots.filter(Boolean).length / this.inv.size;
+    this.overload = clamp((filled - 0.66) / 0.34, 0, 1);
+    const load = 1 - this.overload * 0.28;
+    const speed = 1.65 * this.legPenalty() * load * (1 + 0.08 * this.skills.speed);
+    // Бежать можно только пока есть выносливость. Кончилась — идёшь шагом,
+    // и пока не отдышался хотя бы до четверти, бег не включается
+    const wantSprint = Input.isDown('ShiftLeft') || Input.isDown('ShiftRight');
+    if (this.stam <= 0) this.winded = true;
+    if (this.stam > STAM_MAX * 0.25) this.winded = false;
+    this.sprinting = wantSprint && !this.winded && Math.abs(ax0(this)) > 0;
+    const sprint = this.sprinting ? 1 + 0.55 * clamp(this.legPenalty(), 0.35, 1) : 1;
     let ax = 0;
     if (Input.isDown('KeyA') || Input.isDown('ArrowLeft')) ax -= 1;
     if (Input.isDown('KeyD') || Input.isDown('ArrowRight')) ax += 1;
@@ -166,9 +192,10 @@ const Player = {
       this.vx *= 0.5;
       this.phase += dt * 5;
     } else {
-      if ((Input.isDown('Space') || Input.isDown('KeyW')) && this.onGround) {
+      if ((Input.isDown('Space') || Input.isDown('KeyW')) && this.onGround && this.stam >= 6) {
         this.vy = -5.4 * clamp(this.legPenalty() + 0.2, 0.4, 1);
         this.onGround = false;
+        this.stam = Math.max(0, this.stam - 6);      // прыжок стоит выносливости
       }
       this.vy += GRAV * (inWater ? 0.35 : 1);
       if (inWater) this.vy = Math.min(this.vy, 1.2);
@@ -255,13 +282,70 @@ const Player = {
   },
 
   // ---- шкалы, радиация, кровь ----
+  // тепло от ближайшего костра, печи или факела
+  heatNear() {
+    let best = 0;
+    for (const s of Machines.lights()) {
+      const d = dist(this.x, this.y - 26, s.x, s.y);
+      if (d < 150) best = Math.max(best, (1 - d / 150) * (s.r > 100 ? 1 : 0.5));
+    }
+    return best;
+  },
+  warmthOf(id) { const it = ITEMS[id]; return it && it.warm ? it.warm : 0; },
+  wornWarm() {
+    let w = 0;
+    for (const k in this.worn) if (this.worn[k]) w += ITEMS[this.worn[k]].warm || 0;
+    return w;
+  },
+  rainProof() {
+    let p = 0;
+    for (const k in this.worn) if (this.worn[k]) p = Math.max(p, ITEMS[this.worn[k]].rainproof || 0);
+    return p;
+  },
+
   needs(dt) {
-    const sprinting = Math.abs(this.vx) > 2;
+    const sprinting = this.sprinting && Math.abs(this.vx) > 1;
     const meta = 1 - 0.12 * this.skills.meta;
-    // Одна единица примерно за 15 секунд: полные 300 держатся больше часа игры.
-    // Бег ускоряет расход в полтора раза, не больше
-    this.food -= dt * (1 / 15) * (sprinting ? 1.5 : 1) * meta;
-    this.water -= dt * (1 / 13) * (sprinting ? 1.5 : 1) * meta;
+    // Хардкор: одна единица примерно за 10 секунд вместо пятнадцати.
+    // Бег жрёт вдвое, а не в полтора раза
+    this.food -= dt * (1 / 10) * (sprinting ? 2 : 1) * meta;
+    this.water -= dt * (1 / 8.5) * (sprinting ? 2 : 1) * meta;
+
+    // ---- выносливость ----
+    // Бег и работа её жгут, покой возвращает. Голодный и мёрзнущий
+    // восстанавливается вдвое хуже, раненая нога — ещё хуже
+    const rest = (this.food > 60 ? 1 : 0.45) * (this.warm > 40 ? 1 : 0.5) * this.legPenalty();
+    if (sprinting) this.stam -= dt * (13 + this.overload * 7);
+    else this.stam += dt * 11 * rest;
+    this.stam = clamp(this.stam, 0, STAM_MAX * (1 - this.infection / 260));
+
+    // ---- тепло ----
+    // Ночь, дождь, вода и глубина студят. Греют огонь, дом, крыша и одежда
+    const night = Game.nightAmount();
+    const wet = Weather.wetness() * (1 - this.rainProof());
+    const under = World.isUnderground(this.x, this.y);
+    const roof = World.hasRoof(this.x, this.y);
+    const inHome = Home.inside(this.x, this.y);
+    let cold = night * 26 + wet * 30 + (under ? 10 : 0);
+    if (roof || inHome) cold *= 0.45;
+    if (inHome) cold -= 12;
+    const heat = this.heatNear() * 60 + this.wornWarm() + (sprinting ? 8 : 0);
+    const target = clamp(WARM_MAX - cold + heat, 0, WARM_MAX);
+    this.warm += (target - this.warm) * dt * 0.22;
+    this.warm = clamp(this.warm, 0, WARM_MAX);
+    // дрожь: мёрзнущие руки не держат прицел
+    this.shiver = clamp((30 - this.warm) / 30, 0, 1);
+    if (this.warm < 22) {
+      this.hp -= dt * (22 - this.warm) * 0.055;
+      if (Math.random() < dt * 1.4) Particles.smoke(this.x + rnd(-4, 4), this.y - 48, 'rgba(200,215,230,0.35)');
+    }
+
+    // ---- заражение ----
+    // Само не проходит: растёт, режет выносливость и с 40 начинает есть здоровье
+    if (this.infection > 0) {
+      this.infection = clamp(this.infection + dt * 0.55, 0, 100);
+      if (this.infection > 40) this.hp -= dt * (this.infection - 40) * 0.035;
+    }
 
     // радиация. В противогазе с живым фильтром — не растёт вообще и медленно сходит.
     // Без противогаза копится не спеша, и вредит только выше 30%.
@@ -275,6 +359,8 @@ const Player = {
     else if (this.mask) radIn = (sheltered ? 0.3 : 1.1) * zoneMul;      // фильтр сдох
     else radIn = (sheltered ? 0.35 : 1.5) * zoneMul;                    // без маски
     if (World.get(Math.floor(this.x / CELL), Math.floor((this.y - 6) / CELL)) === M.WATER) radIn += 1.2;
+    // кислотный дождь льёт радиацию прямо на плечи — под крышей вдвое меньше
+    if (!atHome && Weather.cur.rad) radIn += Weather.cur.rad * Weather.fade * (sheltered ? 0.35 : 1) * (1 - this.rainProof() * 0.5);
     this.rad = clamp(this.rad + radIn * lungs * dt - dt * 1.1, 0, 100);
     if (this.mask && !sheltered && !atHome) this.filterWear = Math.max(0, this.filterWear - dt * 0.22 * (1 - 0.12 * this.skills.lungs));
 
@@ -286,14 +372,16 @@ const Player = {
     // кровотечение
     let bleeding = 0;
     for (const l of LIMBS) if (this.body[l.id].bleed) bleeding++;
-    if (bleeding) { this.hp -= dt * bleeding * 1.6; if (Math.random() < dt * 6) Particles.blood(this.x, this.y - 30); }
+    if (bleeding) { this.hp -= dt * bleeding * 2.6; if (Math.random() < dt * 6) Particles.blood(this.x, this.y - 30); }
 
-    // голод и жажда бьют по здоровью
-    if (this.food <= 0) this.hp -= dt * 1.2;
-    if (this.water <= 0) this.hp -= dt * 1.8;
     // психика здоровье не отнимает: на нуле просто сереет мир
     // медленная регенерация в сытости и без ран
-    if (this.food > 120 && this.water > 120 && this.totalWounds() === 0 && this.rad < 15) this.hp += dt * 0.8;
+    if (this.food > 180 && this.water > 180 && this.totalWounds() === 0 && this.rad < 15 &&
+        this.infection === 0 && this.warm > 60) this.hp += dt * 0.45;
+
+    // голод и жажда бьют по здоровью
+    if (this.food <= 0) this.hp -= dt * 1.6;
+    if (this.water <= 0) this.hp -= dt * 2.2;
 
     this.food = clamp(this.food, 0, FOOD_MAX);
     this.water = clamp(this.water, 0, WATER_MAX);
@@ -302,6 +390,8 @@ const Player = {
     if (this.hp <= 0) {
       this.dead = true;
       this.deathCause =
+        this.infection > 55 ? 'Заражение крови. Укус надо было лечить.' :
+        this.warm < 25 ? 'Замёрз насмерть. Ночь не прощает.' :
         this.rad > 45 ? 'Лучевая болезнь. Не стоило снимать противогаз.' :
         this.water <= 0 ? 'Обезвоживание.' :
         this.food <= 0 ? 'Голод.' :
@@ -407,6 +497,8 @@ const Player = {
   reach() { return 78; },
 
   swing(it) {
+    if (this.stam < 8) { this.say('Нет сил бить'); this.cooldown = 0.4; return; }
+    this.stam = Math.max(0, this.stam - 8);
     this.cooldown = it.rof;
     this.swingT = 0.35;
     this.face = Input.wx > this.x ? 1 : -1;
@@ -418,10 +510,11 @@ const Player = {
       // иначе зомби на кочке или вплотную к телу оказывался вне зоны удара
       const zdx = (z.x - hx) * this.face, zdy = (z.y - 24) - hy;
       if (zdx > -34 && zdx < 40 && Math.abs(zdy) < 34) {
-        z.hp -= it.dmg * this.armPenalty();
+        const tired = 0.55 + 0.45 * clamp(this.stam / STAM_MAX, 0, 1);
+        z.hp -= it.dmg * this.armPenalty() * tired;
         z.vx += this.face * 1.6; z.vy = -2.2;
         for (let k = 0; k < 7; k++) Particles.blood(z.x, z.y - 26);
-        Floaters.push(z.x, z.y - 40, String(Math.round(it.dmg * this.armPenalty())), '#e0b090');
+        Floaters.push(z.x, z.y - 40, String(Math.round(it.dmg * this.armPenalty() * tired)), '#e0b090');
         hitAny = true;
       }
     }
@@ -463,10 +556,13 @@ const Player = {
       this.digTarget = { x: cx, y: cy }; this.digProgress = 0;
     }
     this.face = Input.wx > this.x ? 1 : -1;
+    // Кирка сама себя не носит: копание тратит выносливость, на нуле — вяло
+    this.stam = Math.max(0, this.stam - dt * 7);
+    const force = 0.5 + 0.5 * clamp(this.stam / STAM_MAX, 0, 1);
     let power = 0.22;                         // руками
     const woody = MATS[m] && (MATS[m].woody || MATS[m].bark || MATS[m].plank || MATS[m].leaf);
     if (it && it.type === 'tool') power = it.power * (woody && it.wood ? it.wood : 1);
-    power *= this.armPenalty() * (1 + 0.15 * this.skills.dig);
+    power *= this.armPenalty() * force * (1 + 0.15 * this.skills.dig);
     // кисть: руками одна частица, деревянным кайлом 3×3, металлической киркой 9×9
     const brush = it && it.type === 'tool' ? (it.brush || 0) : 0;
     const square = brush >= 2;
@@ -498,6 +594,7 @@ const Player = {
       this.food = clamp(this.food + (it.food || 0) * 2.5, 0, FOOD_MAX);
       this.water = clamp(this.water + (it.water || 0) * 2.5, 0, WATER_MAX);
       this.hp = clamp(this.hp + (it.hp || 0), 0, 100);
+      if (it.warm) this.warm = clamp(this.warm + it.warm, 0, WARM_MAX);
       this.inv.remove(slot.id, 1);
       if (slot.id === 'can') this.inv.add('scrap', 1);
       this.say('Съел: ' + it.name);
@@ -507,7 +604,13 @@ const Player = {
       if (this.water >= WATER_MAX) { this.say('Пить не хочется'); return false; }
       this.water = clamp(this.water + (it.water || 0) * 2.5, 0, WATER_MAX);
       this.hp = clamp(this.hp + (it.hp || 0), 0, 100);
+      if (it.warm) this.warm = clamp(this.warm + it.warm, 0, WARM_MAX);
       if (slot.id === 'canteen_dirty') this.rad = clamp(this.rad + 10, 0, 100);
+      // гнилая вода вдобавок иногда даёт заражение: пей кипячёное
+      if (slot.id === 'canteen_dirty' && Math.random() < 0.3) {
+        this.infection = clamp(this.infection + 12, 0, 100);
+        this.say('Мутную воду пить не стоило');
+      }
       this.inv.remove(slot.id, 1); this.inv.add('canteen', 1);
       this.say('Выпил');
       return true;
@@ -515,6 +618,11 @@ const Player = {
     if (it.type === 'med') {
       // принимается сразу: лечит рану, сбивает радиацию, поднимает психику — что может
       let used = false;
+      if (it.cure && this.infection > 0) {
+        this.infection = clamp(this.infection - it.cure, 0, 100);
+        used = true;
+        this.say(this.infection > 0 ? 'Заражение сбито, но не до конца' : 'Заражение вылечено');
+      }
       if (it.rad && this.rad > 0) { this.rad = clamp(this.rad - it.rad, 0, 100); used = true; this.say('Радиация сбита'); }
       if (it.heals && this.heal(it)) used = true;
       if (!used && (it.hp || 0) > 0 && this.hp < 100) { used = true; this.say('Перевязался'); }
@@ -527,6 +635,16 @@ const Player = {
       this.inv.remove(slot.id, 1);
       const left = this.inv.add(it.gives[0], it.gives[1]);
       this.say('Вскрыл цинк: ' + it.gives[1] + ' патронов' + (left ? ' (часть не влезла)' : ''));
+      return true;
+    }
+    if (it.type === 'wear') { return this.wearCloth(slot.id); }
+    if (it.type === 'oil') {
+      const gun = this.handItem();
+      if (!gun || gun.type !== 'gun') { this.say('Возьми ствол в руку'); return false; }
+      if (!this.gunWear[gun.kind] && this.jam <= 0) { this.say('Ствол и так чистый'); return false; }
+      this.gunWear[gun.kind] = 0; this.jam = 0;
+      this.inv.remove(slot.id, 1);
+      this.say(gun.name + ' вычищен');
       return true;
     }
     if (it.type === 'mask') { this.wearMask(); return true; }
@@ -621,7 +739,7 @@ const Player = {
       return;
     }
     // всё, что просто применяется на себя, уходит в consume — работает и из инвентаря
-    if (['food', 'drink', 'med', 'zinc', 'mask', 'filter'].includes(it.type)) {
+    if (['food', 'drink', 'med', 'zinc', 'mask', 'filter', 'wear', 'oil'].includes(it.type)) {
       this.consume(this.hotbar);
       return;
     }
@@ -646,6 +764,21 @@ const Player = {
     }
   },
 
+  // Надеть или снять куртку и дождевик. Снятое падает обратно в рюкзак
+  wearCloth(id) {
+    const it = ITEMS[id];
+    const s = it.slot;
+    if (this.worn[s] === id) {
+      this.worn[s] = null; this.inv.add(id, 1);
+      this.say(it.name + ' снят');
+      return true;
+    }
+    if (!this.inv.remove(id, 1)) return false;
+    if (this.worn[s]) this.inv.add(this.worn[s], 1);
+    this.worn[s] = id;
+    this.say(it.name + ' надет');
+    return true;
+  },
   wearMask() {
     if (this.mask) return;
     if (!this.inv.remove('gasmask', 1)) return;
@@ -660,6 +793,11 @@ const Player = {
 
   // ---- оружие ----
   startReload(gun) {
+    if (this.jam > 0) {
+      this.jam = 0; this.reload = 1.1; this.reloadGun = null;
+      this.say('Затвор передёрнут');
+      return;
+    }
     if (this.reload > 0) return;
     const id = gun.kind;
     if (this.mag[id] >= gun.mag) return;
@@ -677,11 +815,24 @@ const Player = {
     this.reloadGun = null;
   },
   shoot(gun) {
+    if (this.jam > 0) { this.say('Клин! R — передёрнуть затвор'); this.cooldown = 0.4; return; }
     if (this.mag[gun.kind] <= 0) { this.say('Пусто — R'); this.cooldown = 0.4; return; }
+    // Износ ствола. Чем он выше, тем чаще перекос патрона. Лечится маслом
+    const wear = this.gunWear[gun.kind] || 0;
+    if (Math.random() < Math.pow(wear / 100, 2) * 0.06) {
+      this.jam = 1;
+      this.say('Перекос патрона! R — передёрнуть');
+      Floaters.push(this.x, this.y - 56, 'КЛИН', '#e08a4a');
+      this.cooldown = 0.5;
+      return;
+    }
+    this.gunWear[gun.kind] = Math.min(100, wear + (gun.pellets ? 0.5 : 0.32));
     this.mag[gun.kind]--;
     this.cooldown = gun.rof;
     this.recoil = gun.rec;
-    const spread = gun.spread * (2 - this.armPenalty()) * (1 - 0.12 * this.skills.aim);
+    // мёрзнущие руки и изношенный ствол кладут пули куда попало
+    const shake = 1 + this.shiver * 1.4 + wear / 140;
+    const spread = gun.spread * shake * (2 - this.armPenalty()) * (1 - 0.12 * this.skills.aim);
     const dmg = gun.dmg * (1 + 0.08 * this.skills.aim);
     // дробовик кидает несколько картечин одним выстрелом
     const n = gun.pellets || 1;

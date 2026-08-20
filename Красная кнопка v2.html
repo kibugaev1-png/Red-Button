@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<title>Красная кнопка — сборка 19.08 17:37</title>
+<title>Красная кнопка — сборка 20.08 22:52</title>
 <style>
   html, body {
     margin: 0; padding: 0; height: 100%;
@@ -43,6 +43,8 @@ const GRAV = 0.42;
 const DAY_LEN = 600;          // секунд в сутках (10 минут)
 const FOOD_MAX = 300;         // сытость и вода как в Расте — до 300
 const WATER_MAX = 300;
+const STAM_MAX = 100;         // выносливость: бег, прыжки, удары, копание
+const WARM_MAX = 100;         // тепло тела: ночь, дождь и высота студят
 
 // локации: мир один, но разбит по X на зоны со своим рельефом и правилами
 // Локации разнесены широкими ничейными полосами: между ними — свободная земля,
@@ -1347,6 +1349,31 @@ function limb(ctx, x, y, len, ang, w, col) {
   return [ex, ey];
 }
 
+// Рука: плечо в рукаве, предплечье голое, кисть отдельным пятном.
+// Без этого рука была одной плоской колбасой поверх туловища
+function arm(ctx, x, y, len1, len2, ang, skin, w, sleeve, back) {
+  const sh = back ? 0.68 : 1;
+  const upper = sleeve ? sleeve : shade(skin, sh);
+  const [ex, ey] = limb(ctx, x, y, len1, ang, w, upper);
+  if (sleeve) {
+    // манжет рукава
+    ctx.fillStyle = shade(sleeve, 0.8);
+    ctx.beginPath(); ctx.arc(ex, ey, w * 0.5, 0, 7); ctx.fill();
+  }
+  const [hx, hy] = limb(ctx, ex, ey, len2, ang + 0.25, w * 0.88, shade(skin, sh * 0.9));
+  // кисть
+  ctx.fillStyle = shade(skin, sh * 0.82);
+  ctx.beginPath(); ctx.arc(hx, hy, w * 0.46, 0, 7); ctx.fill();
+  // блик по внешней стороне предплечья
+  if (!back) {
+    ctx.strokeStyle = 'rgba(255,238,214,0.16)'; ctx.lineWidth = w * 0.28; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(ex + Math.sin(ang + 0.25) * 1.5 + 1, ey + Math.cos(ang + 0.25) * 1.5);
+    ctx.lineTo(hx + 1, hy - 1.5); ctx.stroke();
+  }
+  return [hx, hy];
+}
+
 // a — облик: {skin, hair, hairStyle, beard}
 // s — состояние: {face:1|-1, phase, moving, air, dig, aim, mask, item, hurtLeg}
 function drawHuman(ctx, px, py, a, s) {
@@ -1394,41 +1421,113 @@ function drawHuman(ctx, px, py, a, s) {
   // ---- дальняя рука ----
   const armL = 10, foreL = 10;
   const hasGun = !!s.aim;
+  const sleeveCol = s.coat ? '#4c432c' : s.hood ? '#3c584f' : null;
   if (!hasGun) {
     const ah = walk ? -Math.sin(t) * 0.5 : -0.12;
-    const [ex, ey] = limb(ctx, -1, shoulderY + 2, armL, ah, 6.4, shade(skin, 0.7));
-    limb(ctx, ex, ey, foreL, ah - 0.2, 5.6, shade(skin, 0.66));
+    arm(ctx, -1, shoulderY + 2, armL, foreL, ah, skin, 6.2, sleeveCol && shade(sleeveCol, 0.8), true);
   }
 
   // ---- торс ----
   ctx.save();
   ctx.rotate(lean * 0.5);
-  const grd = ctx.createLinearGradient(-6, shoulderY, 7, hipY);
-  grd.addColorStop(0, shirt); grd.addColorStop(1, shirtDark);
+  // силуэт майки: слева тень, по центру свет, справа контровой блик
+  const body = new Path2D();
+  body.moveTo(-6.5, shoulderY + 1);
+  body.quadraticCurveTo(-7.5, hipY - 8, -5.2, hipY + 1);
+  body.lineTo(5.4, hipY + 1);
+  body.quadraticCurveTo(7.6, hipY - 9, 6.6, shoulderY + 1);
+  body.quadraticCurveTo(0, shoulderY - 2.4, -6.5, shoulderY + 1);
+  const grd = ctx.createLinearGradient(-7, 0, 7, 0);
+  grd.addColorStop(0, shade(shirtDark, 0.86));
+  grd.addColorStop(0.42, shirt);
+  grd.addColorStop(1, shirtDark);
   ctx.fillStyle = grd;
+  ctx.fill(body);
+  // ткань живёт: складки под грудью и у пояса
+  ctx.save();
+  ctx.clip(body);
+  ctx.strokeStyle = 'rgba(120,114,96,0.30)'; ctx.lineWidth = 0.8; ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.moveTo(-6.5, shoulderY + 1);
-  ctx.quadraticCurveTo(-7.5, hipY - 8, -5.2, hipY + 1);
-  ctx.lineTo(5.4, hipY + 1);
-  ctx.quadraticCurveTo(7.6, hipY - 9, 6.6, shoulderY + 1);
-  ctx.quadraticCurveTo(0, shoulderY - 2.4, -6.5, shoulderY + 1);
-  ctx.fill();
-  // бретельки майки и грязь
-  ctx.fillStyle = 'rgba(120,112,92,0.35)';
-  ctx.fillRect(-5.6, hipY - 5, 11.4, 2.2);
-  ctx.fillStyle = 'rgba(90,80,62,0.22)';
-  ctx.fillRect(-4.2, hipY - 11, 4, 4);
-  ctx.fillStyle = 'rgba(255,255,255,0.25)';
-  ctx.fillRect(-2.4, shoulderY + 2, 4.6, 6);
-  // ремень
-  ctx.fillStyle = '#31261d';
-  ctx.fillRect(-6, hipY - 1.5, 12, 3.4);
-  ctx.fillStyle = '#8b7a52';
-  ctx.fillRect(0.4, hipY - 1, 2.4, 2.6);
-  // шея
-  ctx.fillStyle = shade(skin, 0.85);
-  ctx.fillRect(-2.2, shoulderY - 4, 4.6, 6);
+  ctx.moveTo(-5, hipY - 12); ctx.quadraticCurveTo(-1.5, hipY - 10, 2.6, hipY - 13);
+  ctx.moveTo(-4.4, hipY - 5.5); ctx.quadraticCurveTo(0, hipY - 3.6, 4.6, hipY - 6);
+  ctx.moveTo(-2, shoulderY + 8); ctx.quadraticCurveTo(1, shoulderY + 10, 4, shoulderY + 7.4);
+  ctx.stroke();
+  // въевшаяся грязь и старое пятно крови
+  ctx.fillStyle = 'rgba(92,82,64,0.26)';
+  ctx.beginPath(); ctx.ellipse(-3.4, hipY - 9, 3, 2.4, 0.4, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(106,48,40,0.20)';
+  ctx.beginPath(); ctx.ellipse(3.2, hipY - 14, 2, 2.8, -0.3, 0, 7); ctx.fill();
+  // контровой свет по правому краю — то, что отделяет фигуру от фона
+  ctx.fillStyle = 'rgba(255,246,222,0.22)';
+  ctx.fillRect(4.8, shoulderY, 2.4, 22);
   ctx.restore();
+  // бретельки майки
+  ctx.fillStyle = 'rgba(255,255,255,0.20)';
+  ctx.beginPath(); ctx.moveTo(-4.4, shoulderY + 1); ctx.lineTo(-2.6, shoulderY + 1);
+  ctx.lineTo(-1.4, shoulderY + 9); ctx.lineTo(-3, shoulderY + 9); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(2.8, shoulderY + 0.4); ctx.lineTo(4.6, shoulderY + 0.6);
+  ctx.lineTo(4.2, shoulderY + 8.6); ctx.lineTo(2.6, shoulderY + 8.4); ctx.fill();
+  // ремень с бляхой
+  ctx.fillStyle = '#31261d';
+  ctx.beginPath(); ctx.roundRect(-6, hipY - 1.8, 12, 3.6, 0.8); ctx.fill();
+  ctx.fillStyle = 'rgba(255,240,210,0.12)'; ctx.fillRect(-6, hipY - 1.8, 12, 0.8);
+  ctx.fillStyle = '#a08f5e';
+  ctx.beginPath(); ctx.roundRect(0.4, hipY - 1.4, 2.8, 3, 0.6); ctx.fill();
+  ctx.fillStyle = '#6b5c34'; ctx.fillRect(1.4, hipY - 0.6, 0.8, 1.4);
+  // шея с тенью от челюсти
+  ctx.fillStyle = shade(skin, 0.82);
+  ctx.beginPath(); ctx.roundRect(-2.3, shoulderY - 4.4, 4.8, 6.4, 1.2); ctx.fill();
+  ctx.fillStyle = 'rgba(30,22,16,0.28)';
+  ctx.fillRect(-2.3, shoulderY - 4.4, 4.8, 2);
+  ctx.restore();
+
+  // ---- надетая одежда ----
+  if (s.coat) {
+    ctx.save(); ctx.rotate(lean * 0.5);
+    const cg = ctx.createLinearGradient(-8, 0, 8, 0);
+    cg.addColorStop(0, '#443c28'); cg.addColorStop(0.45, '#5c5238'); cg.addColorStop(1, '#3d3624');
+    ctx.fillStyle = cg;
+    ctx.beginPath();
+    ctx.moveTo(-7.4, shoulderY);
+    ctx.quadraticCurveTo(-9, hipY - 6, -7, hipY + 5);
+    ctx.lineTo(7, hipY + 5);
+    ctx.quadraticCurveTo(9, hipY - 7, 7.4, shoulderY);
+    ctx.quadraticCurveTo(0, shoulderY - 3.4, -7.4, shoulderY);
+    ctx.fill();
+    // воротник, борт и пуговицы
+    ctx.fillStyle = '#6e6244';
+    ctx.beginPath(); ctx.moveTo(-6.4, shoulderY - 0.6); ctx.lineTo(0, shoulderY + 5);
+    ctx.lineTo(6.4, shoulderY - 0.6); ctx.lineTo(6.4, shoulderY + 2.6);
+    ctx.lineTo(0, shoulderY + 8); ctx.lineTo(-6.4, shoulderY + 2.6); ctx.fill();
+    ctx.fillStyle = 'rgba(24,20,14,0.5)'; ctx.fillRect(0.6, shoulderY + 6, 1.2, 20);
+    ctx.fillStyle = '#a08f5e';
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(2.4, shoulderY + 10 + i * 5.4, 0.8, 0, 7); ctx.fill(); }
+    ctx.fillStyle = 'rgba(255,246,222,0.16)'; ctx.fillRect(5.6, shoulderY + 2, 2, 20);
+    ctx.restore();
+  }
+  if (s.hood) {
+    // плащ: накидка от плеч до колен и складки от ветра
+    ctx.save(); ctx.rotate(lean * 0.5);
+    const rg = ctx.createLinearGradient(-9, 0, 9, 0);
+    rg.addColorStop(0, 'rgba(48,70,64,0.85)');
+    rg.addColorStop(0.45, 'rgba(71,102,92,0.85)');
+    rg.addColorStop(1, 'rgba(44,64,58,0.85)');
+    ctx.fillStyle = rg;
+    ctx.beginPath();
+    ctx.moveTo(-7.4, shoulderY - 1);
+    ctx.quadraticCurveTo(-10, hipY - 2, -8.4, hipY + 7);
+    ctx.quadraticCurveTo(0, hipY + 9.5, 8.4, hipY + 7);
+    ctx.quadraticCurveTo(10, hipY - 3, 7.4, shoulderY - 1);
+    ctx.quadraticCurveTo(0, shoulderY - 4, -7.4, shoulderY - 1);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(28,42,38,0.35)'; ctx.lineWidth = 0.7;
+    for (const fx of [-4, 0, 4]) {
+      ctx.beginPath(); ctx.moveTo(fx * 0.7, shoulderY + 4);
+      ctx.quadraticCurveTo(fx, hipY - 4, fx * 1.15, hipY + 7); ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(5.6, shoulderY + 2, 2, 26);
+    ctx.restore();
+  }
 
   // ---- голова ----
   ctx.save();
@@ -1460,13 +1559,53 @@ function drawHuman(ctx, px, py, a, s) {
     ctx.strokeStyle = '#33372f'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(-4.6, -3.4); ctx.lineTo(-7, -2.2); ctx.moveTo(-4.6, 2.4); ctx.lineTo(-7, 2); ctx.stroke();
   } else {
-    ctx.fillStyle = skin;
-    ctx.beginPath(); ctx.ellipse(0, 0, 5.4, 6.2, 0, 0, 7); ctx.fill();
-    // нос, глаз
-    ctx.fillStyle = shade(skin, 0.86);
-    ctx.beginPath(); ctx.moveTo(4.6, -0.6); ctx.lineTo(6.4, 0.8); ctx.lineTo(4.4, 1.2); ctx.fill();
-    ctx.fillStyle = '#1d1a18';
-    ctx.fillRect(2.4, -1.8, 1.5, 1.5);
+    // Голова в профиль: череп, челюсть, скула, ухо, нос и один видимый глаз —
+    // так и должно быть при виде сбоку. Объём даёт градиент, а не второй глаз
+    const hg = ctx.createLinearGradient(-5.4, 0, 5.4, 0);
+    hg.addColorStop(0, shade(skin, 0.74));
+    hg.addColorStop(0.45, skin);
+    hg.addColorStop(1, shade(skin, 0.9));
+    // силуэт головы держим отдельным путём: по нему же обрезаем бороду,
+    // чтобы щетина не вылезала за челюсть и не читалась как открытый рот
+    const headPath = new Path2D();
+    headPath.moveTo(-4.6, -3.6);
+    headPath.quadraticCurveTo(-0.4, -7.4, 4.2, -3.4);      // темя и лоб
+    headPath.quadraticCurveTo(5.2, -1.8, 4.7, -0.8);       // переносица
+    headPath.lineTo(5.9, 0.7);                             // нос — короткий, не клюв
+    headPath.lineTo(4.4, 1.3);
+    headPath.quadraticCurveTo(4.9, 3.2, 3.4, 4.6);         // губа и подбородок
+    headPath.quadraticCurveTo(1.2, 6.4, -1.6, 5.4);        // челюсть
+    headPath.quadraticCurveTo(-5, 3.6, -4.6, -3.6);
+    ctx.fillStyle = hg;
+    ctx.fill(headPath);
+    // скула и тень под челюстью
+    ctx.fillStyle = 'rgba(120,78,50,0.12)';
+    ctx.beginPath(); ctx.ellipse(2, 1.6, 1.8, 1.1, -0.25, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-0.4, 4.4, 2.6, 1, 0.1, 0, 7); ctx.fill();
+    // ухо
+    ctx.fillStyle = shade(skin, 0.88);
+    ctx.beginPath(); ctx.ellipse(-2.2, 0.6, 1.5, 2, -0.2, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(110,70,46,0.5)'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.arc(-2.2, 0.6, 0.9, -1.2, 1.6); ctx.stroke();
+    // глаз: веко, белок, зрачок и блик
+    ctx.fillStyle = 'rgba(232,226,212,0.92)';
+    ctx.beginPath(); ctx.ellipse(3.1, -1.5, 1.15, 0.82, -0.08, 0, 7); ctx.fill();
+    ctx.fillStyle = '#3a312b';
+    ctx.beginPath(); ctx.arc(3.5, -1.45, 0.66, 0, 7); ctx.fill();
+    ctx.fillStyle = '#141110';
+    ctx.beginPath(); ctx.arc(3.6, -1.45, 0.32, 0, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath(); ctx.arc(3.3, -1.8, 0.22, 0, 7); ctx.fill();
+    // верхнее веко и бровь — без них лицо выглядит пустым
+    ctx.strokeStyle = shade(skin, 0.62); ctx.lineWidth = 0.7; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(1.5, -2.2); ctx.quadraticCurveTo(3.1, -3, 4.4, -1.9); ctx.stroke();
+    ctx.strokeStyle = shade(hair, 0.9); ctx.lineWidth = 1.1;
+    ctx.beginPath(); ctx.moveTo(1.2, -3.4); ctx.quadraticCurveTo(3, -4.3, 4.6, -3.2); ctx.stroke();
+    // ноздря и линия рта
+    ctx.fillStyle = 'rgba(60,36,26,0.5)';
+    ctx.beginPath(); ctx.ellipse(5.1, 1, 0.45, 0.3, 0.3, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(90,52,42,0.55)'; ctx.lineWidth = 0.7;
+    ctx.beginPath(); ctx.moveTo(3.1, 3); ctx.quadraticCurveTo(4.2, 3.2, 4.7, 2.7); ctx.stroke();
     // волосы
     ctx.fillStyle = hair;
     const st = a.hairStyle % HAIRSTYLES.length;
@@ -1475,12 +1614,46 @@ function drawHuman(ctx, px, py, a, s) {
     else if (st === 2) { ctx.beginPath(); ctx.moveTo(-5.6, -3.2); ctx.quadraticCurveTo(0, -9, 5.4, -3.6); ctx.quadraticCurveTo(1, -5.4, -5.6, -3.2); ctx.fill(); }
     else if (st === 3) { ctx.beginPath(); ctx.ellipse(-2.8, -3.4, 3, 2.4, 0, Math.PI, 0); ctx.fill(); }
     else { for (let i = 0; i < 9; i++) { const an = Math.PI + i * 0.4; ctx.beginPath(); ctx.ellipse(Math.cos(an) * 4.4, -3 + Math.sin(an) * 3.4, 2.2, 2, 0, 0, 7); ctx.fill(); } }
+    // блик на волосах — они перестают быть плоским пятном
+    ctx.fillStyle = 'rgba(255,244,220,0.14)';
+    ctx.beginPath(); ctx.ellipse(0.6, -4.6, 3, 1, -0.2, 0, 7); ctx.fill();
     if (a.beard) {
-      ctx.fillStyle = shade(hair, 0.85);
-      ctx.beginPath(); ctx.ellipse(1.4, 3.2, 4, 3, 0, 0, Math.PI); ctx.fill();
+      // Щетина: заливаем низ лица и обрезаем силуэтом головы. Так борода
+      // всегда сидит по челюсти и не превращается в ухмылку
+      ctx.save();
+      ctx.clip(headPath);
+      ctx.fillStyle = shade(hair, 0.92);
+      ctx.beginPath();
+      ctx.moveTo(-5, 0.4);
+      ctx.quadraticCurveTo(-1, 2.6, 2.6, 1.6);
+      ctx.quadraticCurveTo(4.2, 1.2, 5, 2);
+      ctx.lineTo(5, 7); ctx.lineTo(-5, 7);
+      ctx.fill();
+      // губа поверх бороды, чтобы рот читался
+      ctx.strokeStyle = 'rgba(40,26,20,0.5)'; ctx.lineWidth = 0.6;
+      ctx.beginPath(); ctx.moveTo(3.2, 2.9); ctx.quadraticCurveTo(4.1, 3.1, 4.6, 2.7); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,246,226,0.10)';
+      ctx.beginPath(); ctx.ellipse(0.6, 4.2, 2.4, 0.9, 0.05, 0, 7); ctx.fill();
+      ctx.restore();
     }
   }
   ctx.restore();
+
+  // капюшон надевается поверх головы, но лицо остаётся видно
+  if (s.hood) {
+    ctx.save(); ctx.translate(0, headY); ctx.rotate(lean * 0.3);
+    ctx.fillStyle = 'rgba(60,88,80,0.92)';
+    ctx.beginPath();
+    ctx.moveTo(-5.4, 4);
+    ctx.quadraticCurveTo(-7.4, -6.4, 0, -8.4);
+    ctx.quadraticCurveTo(4.6, -8.2, 5.2, -4.6);
+    ctx.quadraticCurveTo(3.4, -5.6, 1.6, -4.4);
+    ctx.quadraticCurveTo(-2.6, -3.2, -2.8, 4.2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    ctx.beginPath(); ctx.ellipse(-0.6, -6, 3, 1.1, -0.15, 0, 7); ctx.fill();
+    ctx.restore();
+  }
 
   // ---- ближняя нога ----
   leg(0, false);
@@ -1493,15 +1666,22 @@ function drawHuman(ctx, px, py, a, s) {
     const ang = face === 1 ? s.aimAng : Math.PI - s.aimAng;
     const hx = sx + Math.cos(ang) * 15, hy = sy + Math.sin(ang) * 15;
     // дальняя рука поддерживает
-    limb(ctx, -1, sy, 9, Math.PI / 2 - ang - 0.5, 6, shade(skin, 0.7));
+    limb(ctx, -1, sy, 9, Math.PI / 2 - ang - 0.5, 6, sleeveCol ? shade(sleeveCol, 0.8) : shade(skin, 0.7));
     drawWeapon(ctx, sx + Math.cos(ang) * 6, sy + Math.sin(ang) * 6, ang, s.aim, s.recoil || 0);
-    ctx.strokeStyle = skin; ctx.lineWidth = 6.4; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(hx, hy); ctx.stroke();
+    // плечо в рукаве, предплечье голое — рука перестаёт быть плоской колбасой
+    const mx = sx + Math.cos(ang) * 7.5, my = sy + Math.sin(ang) * 7.5;
+    ctx.strokeStyle = sleeveCol || skin; ctx.lineWidth = 6.6; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(mx, my); ctx.stroke();
+    ctx.strokeStyle = shade(skin, 0.94); ctx.lineWidth = 5.8;
+    ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(hx, hy); ctx.stroke();
+    ctx.fillStyle = shade(skin, 0.82);
+    ctx.beginPath(); ctx.arc(hx, hy, 2.9, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,238,214,0.16)'; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.moveTo(mx, my - 1.6); ctx.lineTo(hx, hy - 1.6); ctx.stroke();
   } else {
     let ah = walk ? Math.sin(t) * 0.5 : 0.12;
     if (s.dig !== undefined) ah = -1.5 + Math.sin(s.dig * Math.PI) * 2.6;
-    const [ex, ey] = limb(ctx, sx, sy, armL, ah, 6.6, skin);
-    const [hx, hy] = limb(ctx, ex, ey, foreL, ah + 0.25, 5.8, skin);
+    const [hx, hy] = arm(ctx, sx, sy, armL, foreL, ah, skin, 6.4, sleeveCol, false);
     if (s.item === 'pick') drawPickaxe(ctx, hx, hy, ah + 1.1);
     else if (s.item === 'axe') drawAxe(ctx, hx, hy, ah + 1.1);
     else if (s.item === 'club') drawClub(ctx, hx, hy, ah + 1.1);
@@ -2134,6 +2314,39 @@ const ITEMS = {
     icon: (g, s) => { g.fillStyle = '#4a7a52'; g.beginPath(); g.roundRect(s * 0.3, s * 0.26, s * 0.4, s * 0.5, s * 0.14); g.fill();
       g.fillStyle = '#d8e0cc'; g.beginPath(); g.roundRect(s * 0.3, s * 0.26, s * 0.4, s * 0.24, s * 0.14); g.fill();
       g.fillStyle = '#2f4a34'; g.fillRect(s * 0.36, s * 0.55, s * 0.28, s * 0.06); } },
+  antibiotic: { name: 'Антибиотик', max: 10, type: 'med', cure: 70, hp: 4, desc: 'Гасит заражение от укуса. Больше ничего не лечит.',
+    icon: (g, s) => { g.fillStyle = '#d8d2c2'; g.beginPath(); g.roundRect(s * 0.3, s * 0.22, s * 0.4, s * 0.56, s * 0.16); g.fill();
+      g.fillStyle = '#3f7a8a'; g.beginPath(); g.roundRect(s * 0.3, s * 0.5, s * 0.4, s * 0.28, s * 0.16); g.fill();
+      g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(s * 0.36, s * 0.28, s * 0.06, s * 0.4); } },
+  coat: { name: 'Ватник', max: 1, type: 'wear', slot: 'coat', warm: 38, desc: 'ПКМ — надеть. Ночью без него холодно.',
+    icon: (g, s) => { g.fillStyle = '#5c5238'; g.beginPath(); g.roundRect(s * 0.22, s * 0.26, s * 0.56, s * 0.54, s * 0.08); g.fill();
+      g.fillStyle = '#6e6244'; g.fillRect(s * 0.22, s * 0.26, s * 0.56, s * 0.1);
+      g.fillStyle = '#403a28'; g.fillRect(s * 0.47, s * 0.3, s * 0.06, s * 0.5);
+      g.fillStyle = '#8a7a52'; for (let i = 0; i < 3; i++) g.fillRect(s * 0.44, s * (0.4 + i * 0.13), s * 0.05, s * 0.05); } },
+  hood: { name: 'Плащ-дождевик', max: 1, type: 'wear', slot: 'hood', warm: 10, rainproof: 0.75, desc: 'ПКМ — надеть. Дождь почти не мочит.',
+    icon: (g, s) => { g.fillStyle = '#3f5a52'; g.beginPath(); g.moveTo(s * 0.5, s * 0.18); g.lineTo(s * 0.84, s * 0.8);
+      g.lineTo(s * 0.16, s * 0.8); g.fill();
+      g.fillStyle = '#57786c'; g.beginPath(); g.ellipse(s * 0.5, s * 0.3, s * 0.16, s * 0.12, 0, Math.PI, 0); g.fill();
+      g.fillStyle = 'rgba(255,255,255,0.16)'; g.fillRect(s * 0.44, s * 0.34, s * 0.05, s * 0.44); } },
+  gunoil: { name: 'Ружейное масло', max: 10, type: 'oil', desc: 'ПКМ — вычистить ствол в руке. Снимает износ и клин.',
+    icon: (g, s) => { g.fillStyle = '#6a4a24'; g.beginPath(); g.roundRect(s * 0.32, s * 0.34, s * 0.34, s * 0.46, s * 0.06); g.fill();
+      g.fillStyle = '#c9a24c'; g.fillRect(s * 0.36, s * 0.44, s * 0.26, s * 0.2);
+      g.fillStyle = '#4a4d52'; g.beginPath(); g.moveTo(s * 0.44, s * 0.34); g.lineTo(s * 0.7, s * 0.14);
+      g.lineTo(s * 0.76, s * 0.2); g.lineTo(s * 0.52, s * 0.34); g.fill(); } },
+  tea: { name: 'Горячий чай', max: 8, type: 'drink', water: 24, warm: 46, psy: 8, desc: 'Греет изнутри. Варится на костре.',
+    icon: (g, s) => { g.fillStyle = '#b9b3a2'; g.beginPath(); g.roundRect(s * 0.26, s * 0.38, s * 0.42, s * 0.38, s * 0.06); g.fill();
+      g.fillStyle = '#7a4a24'; g.beginPath(); g.roundRect(s * 0.3, s * 0.44, s * 0.34, s * 0.14, s * 0.03); g.fill();
+      g.strokeStyle = '#b9b3a2'; g.lineWidth = s * 0.05;
+      g.beginPath(); g.arc(s * 0.72, s * 0.54, s * 0.1, -1.2, 1.2); g.stroke();
+      g.strokeStyle = 'rgba(230,230,220,0.5)'; g.lineWidth = s * 0.035;
+      g.beginPath(); g.moveTo(s * 0.4, s * 0.34); g.quadraticCurveTo(s * 0.48, s * 0.24, s * 0.4, s * 0.16); g.stroke(); } },
+  stew: { name: 'Похлёбка', max: 8, type: 'food', food: 44, water: 12, warm: 34, psy: 10, desc: 'Горячая. Держит и сытость, и тепло.',
+    icon: (g, s) => { g.fillStyle = '#6f7378'; g.beginPath(); g.ellipse(s * 0.5, s * 0.6, s * 0.32, s * 0.2, 0, 0, 7); g.fill();
+      g.fillStyle = '#8a5a2a'; g.beginPath(); g.ellipse(s * 0.5, s * 0.54, s * 0.27, s * 0.14, 0, 0, 7); g.fill();
+      g.fillStyle = '#c9a24c'; g.beginPath(); g.arc(s * 0.42, s * 0.54, s * 0.04, 0, 7); g.fill();
+      g.beginPath(); g.arc(s * 0.6, s * 0.57, s * 0.035, 0, 7); g.fill();
+      g.strokeStyle = 'rgba(230,230,220,0.45)'; g.lineWidth = s * 0.035;
+      g.beginPath(); g.moveTo(s * 0.44, s * 0.36); g.quadraticCurveTo(s * 0.52, s * 0.26, s * 0.44, s * 0.18); g.stroke(); } },
   map_caves: { name: 'Карта пещер', max: 1, type: 'quest', desc: 'Отмечены входы в подземные комплексы. Пока не читается.',
     icon: (g, s) => { g.fillStyle = '#cfc3a0'; g.beginPath(); g.moveTo(s * 0.16, s * 0.3); g.lineTo(s * 0.5, s * 0.24);
       g.lineTo(s * 0.84, s * 0.34); g.lineTo(s * 0.82, s * 0.76); g.lineTo(s * 0.48, s * 0.82); g.lineTo(s * 0.18, s * 0.72); g.fill();
@@ -2228,7 +2441,14 @@ const RECIPES = [
   { out: ['copper', 1], in: { copper_ore: 2 }, station: 'furnace', fuel: 1 },
   { out: ['concrete', 4], in: { stone: 4, clay: 2 }, station: 'furnace', fuel: 1 },
 
+  { out: ['coat', 1], in: { rag: 14, stick: 2 }, station: 'workbench' },
+  { out: ['hood', 1], in: { rag: 8, scrap: 2 }, station: 'workbench' },
+  { out: ['gunoil', 2], in: { lowgrade: 2, rag: 1 }, station: 'workbench' },
+  { out: ['antibiotic', 1], in: { clay: 3, copper: 2, rag: 2 }, station: 'workbench2' },
+
   { out: ['potato_baked', 1], in: { potato: 1 }, station: 'campfire' },
+  { out: ['tea', 1], in: { canteen_clean: 1, wood: 1 }, station: 'campfire' },
+  { out: ['stew', 1], in: { potato: 2, canteen_clean: 1, meat_rot: 1 }, station: 'campfire' },
   { out: ['canteen_clean', 1], in: { canteen_dirty: 1 }, station: 'campfire' },
   { out: ['seeds', 2], in: { potato: 1 }, station: 'campfire' }
 ];
@@ -2297,12 +2517,26 @@ const SKILLS = [
 const SKILL_MAX = 5;
 function skillCost(lvl) { return 10 + lvl * 8; }
 
+// направление ходьбы по клавишам: нужно ещё до того, как посчитан разгон
+function ax0() {
+  let a = 0;
+  if (Input.isDown('KeyA') || Input.isDown('ArrowLeft')) a -= 1;
+  if (Input.isDown('KeyD') || Input.isDown('ArrowRight')) a += 1;
+  return a;
+}
+
 const Player = {
   x: 0, y: 0, vx: 0, vy: 0, w: 13, h: 54,
   coins: 0, kills: 0,
   skills: { dig: 0, speed: 0, legs: 0, lungs: 0, meta: 0, aim: 0, medic: 0, trade: 0 },
   face: 1, phase: 0, onGround: false, fallStart: null,
   hp: 100, food: 240, water: 220, psy: 100, rad: 0,
+  // Хардкорные шкалы. Выносливость тратится на бег, прыжки, удары и копание.
+  // Тепло уходит ночью, под дождём и на высоте, возвращается у огня и в доме.
+  // Заражение приходит с укусом и само не проходит — только антибиотик
+  stam: STAM_MAX, warm: WARM_MAX, infection: 0, shiver: 0,
+  worn: { coat: null, hood: null },      // надетая одежда
+  gunWear: {}, jam: 0,                   // износ стволов и клин
   mask: null,            // {filter: 0..100} — надет
   filterWear: 100,
   look: { skin: 1, hair: 0, hairStyle: 0, beard: true, name: 'Выживший' },
@@ -2328,6 +2562,9 @@ const Player = {
 
   init() {
     this.inv = new Inventory(30);
+    this.stam = STAM_MAX; this.warm = WARM_MAX; this.infection = 0; this.shiver = 0;
+    this.worn = { coat: null, hood: null };
+    this.gunWear = {}; this.jam = 0;
     for (const l of LIMBS) this.body[l.id] = { w: 0, bleed: false };
     this.x = World.spawnX * CELL;
     this.y = (World.surface[World.spawnX] - 1) * CELL;
@@ -2410,9 +2647,18 @@ const Player = {
 
   update(dt) {
     if (this.dead) return;
-    const speed = 1.65 * this.legPenalty() * (1 + 0.08 * this.skills.speed);
-    const sprint = Input.isDown('ShiftLeft') || Input.isDown('ShiftRight')
-      ? 1 + 0.55 * clamp(this.legPenalty(), 0.35, 1) : 1;
+    // Набитый рюкзак тянет вниз: больше двух третей занятых ячеек — идёшь медленнее
+    const filled = this.inv.slots.filter(Boolean).length / this.inv.size;
+    this.overload = clamp((filled - 0.66) / 0.34, 0, 1);
+    const load = 1 - this.overload * 0.28;
+    const speed = 1.65 * this.legPenalty() * load * (1 + 0.08 * this.skills.speed);
+    // Бежать можно только пока есть выносливость. Кончилась — идёшь шагом,
+    // и пока не отдышался хотя бы до четверти, бег не включается
+    const wantSprint = Input.isDown('ShiftLeft') || Input.isDown('ShiftRight');
+    if (this.stam <= 0) this.winded = true;
+    if (this.stam > STAM_MAX * 0.25) this.winded = false;
+    this.sprinting = wantSprint && !this.winded && Math.abs(ax0(this)) > 0;
+    const sprint = this.sprinting ? 1 + 0.55 * clamp(this.legPenalty(), 0.35, 1) : 1;
     let ax = 0;
     if (Input.isDown('KeyA') || Input.isDown('ArrowLeft')) ax -= 1;
     if (Input.isDown('KeyD') || Input.isDown('ArrowRight')) ax += 1;
@@ -2436,9 +2682,10 @@ const Player = {
       this.vx *= 0.5;
       this.phase += dt * 5;
     } else {
-      if ((Input.isDown('Space') || Input.isDown('KeyW')) && this.onGround) {
+      if ((Input.isDown('Space') || Input.isDown('KeyW')) && this.onGround && this.stam >= 6) {
         this.vy = -5.4 * clamp(this.legPenalty() + 0.2, 0.4, 1);
         this.onGround = false;
+        this.stam = Math.max(0, this.stam - 6);      // прыжок стоит выносливости
       }
       this.vy += GRAV * (inWater ? 0.35 : 1);
       if (inWater) this.vy = Math.min(this.vy, 1.2);
@@ -2525,13 +2772,70 @@ const Player = {
   },
 
   // ---- шкалы, радиация, кровь ----
+  // тепло от ближайшего костра, печи или факела
+  heatNear() {
+    let best = 0;
+    for (const s of Machines.lights()) {
+      const d = dist(this.x, this.y - 26, s.x, s.y);
+      if (d < 150) best = Math.max(best, (1 - d / 150) * (s.r > 100 ? 1 : 0.5));
+    }
+    return best;
+  },
+  warmthOf(id) { const it = ITEMS[id]; return it && it.warm ? it.warm : 0; },
+  wornWarm() {
+    let w = 0;
+    for (const k in this.worn) if (this.worn[k]) w += ITEMS[this.worn[k]].warm || 0;
+    return w;
+  },
+  rainProof() {
+    let p = 0;
+    for (const k in this.worn) if (this.worn[k]) p = Math.max(p, ITEMS[this.worn[k]].rainproof || 0);
+    return p;
+  },
+
   needs(dt) {
-    const sprinting = Math.abs(this.vx) > 2;
+    const sprinting = this.sprinting && Math.abs(this.vx) > 1;
     const meta = 1 - 0.12 * this.skills.meta;
-    // Одна единица примерно за 15 секунд: полные 300 держатся больше часа игры.
-    // Бег ускоряет расход в полтора раза, не больше
-    this.food -= dt * (1 / 15) * (sprinting ? 1.5 : 1) * meta;
-    this.water -= dt * (1 / 13) * (sprinting ? 1.5 : 1) * meta;
+    // Хардкор: одна единица примерно за 10 секунд вместо пятнадцати.
+    // Бег жрёт вдвое, а не в полтора раза
+    this.food -= dt * (1 / 10) * (sprinting ? 2 : 1) * meta;
+    this.water -= dt * (1 / 8.5) * (sprinting ? 2 : 1) * meta;
+
+    // ---- выносливость ----
+    // Бег и работа её жгут, покой возвращает. Голодный и мёрзнущий
+    // восстанавливается вдвое хуже, раненая нога — ещё хуже
+    const rest = (this.food > 60 ? 1 : 0.45) * (this.warm > 40 ? 1 : 0.5) * this.legPenalty();
+    if (sprinting) this.stam -= dt * (13 + this.overload * 7);
+    else this.stam += dt * 11 * rest;
+    this.stam = clamp(this.stam, 0, STAM_MAX * (1 - this.infection / 260));
+
+    // ---- тепло ----
+    // Ночь, дождь, вода и глубина студят. Греют огонь, дом, крыша и одежда
+    const night = Game.nightAmount();
+    const wet = Weather.wetness() * (1 - this.rainProof());
+    const under = World.isUnderground(this.x, this.y);
+    const roof = World.hasRoof(this.x, this.y);
+    const inHome = Home.inside(this.x, this.y);
+    let cold = night * 26 + wet * 30 + (under ? 10 : 0);
+    if (roof || inHome) cold *= 0.45;
+    if (inHome) cold -= 12;
+    const heat = this.heatNear() * 60 + this.wornWarm() + (sprinting ? 8 : 0);
+    const target = clamp(WARM_MAX - cold + heat, 0, WARM_MAX);
+    this.warm += (target - this.warm) * dt * 0.22;
+    this.warm = clamp(this.warm, 0, WARM_MAX);
+    // дрожь: мёрзнущие руки не держат прицел
+    this.shiver = clamp((30 - this.warm) / 30, 0, 1);
+    if (this.warm < 22) {
+      this.hp -= dt * (22 - this.warm) * 0.055;
+      if (Math.random() < dt * 1.4) Particles.smoke(this.x + rnd(-4, 4), this.y - 48, 'rgba(200,215,230,0.35)');
+    }
+
+    // ---- заражение ----
+    // Само не проходит: растёт, режет выносливость и с 40 начинает есть здоровье
+    if (this.infection > 0) {
+      this.infection = clamp(this.infection + dt * 0.55, 0, 100);
+      if (this.infection > 40) this.hp -= dt * (this.infection - 40) * 0.035;
+    }
 
     // радиация. В противогазе с живым фильтром — не растёт вообще и медленно сходит.
     // Без противогаза копится не спеша, и вредит только выше 30%.
@@ -2545,6 +2849,8 @@ const Player = {
     else if (this.mask) radIn = (sheltered ? 0.3 : 1.1) * zoneMul;      // фильтр сдох
     else radIn = (sheltered ? 0.35 : 1.5) * zoneMul;                    // без маски
     if (World.get(Math.floor(this.x / CELL), Math.floor((this.y - 6) / CELL)) === M.WATER) radIn += 1.2;
+    // кислотный дождь льёт радиацию прямо на плечи — под крышей вдвое меньше
+    if (!atHome && Weather.cur.rad) radIn += Weather.cur.rad * Weather.fade * (sheltered ? 0.35 : 1) * (1 - this.rainProof() * 0.5);
     this.rad = clamp(this.rad + radIn * lungs * dt - dt * 1.1, 0, 100);
     if (this.mask && !sheltered && !atHome) this.filterWear = Math.max(0, this.filterWear - dt * 0.22 * (1 - 0.12 * this.skills.lungs));
 
@@ -2556,14 +2862,16 @@ const Player = {
     // кровотечение
     let bleeding = 0;
     for (const l of LIMBS) if (this.body[l.id].bleed) bleeding++;
-    if (bleeding) { this.hp -= dt * bleeding * 1.6; if (Math.random() < dt * 6) Particles.blood(this.x, this.y - 30); }
+    if (bleeding) { this.hp -= dt * bleeding * 2.6; if (Math.random() < dt * 6) Particles.blood(this.x, this.y - 30); }
 
-    // голод и жажда бьют по здоровью
-    if (this.food <= 0) this.hp -= dt * 1.2;
-    if (this.water <= 0) this.hp -= dt * 1.8;
     // психика здоровье не отнимает: на нуле просто сереет мир
     // медленная регенерация в сытости и без ран
-    if (this.food > 120 && this.water > 120 && this.totalWounds() === 0 && this.rad < 15) this.hp += dt * 0.8;
+    if (this.food > 180 && this.water > 180 && this.totalWounds() === 0 && this.rad < 15 &&
+        this.infection === 0 && this.warm > 60) this.hp += dt * 0.45;
+
+    // голод и жажда бьют по здоровью
+    if (this.food <= 0) this.hp -= dt * 1.6;
+    if (this.water <= 0) this.hp -= dt * 2.2;
 
     this.food = clamp(this.food, 0, FOOD_MAX);
     this.water = clamp(this.water, 0, WATER_MAX);
@@ -2572,6 +2880,8 @@ const Player = {
     if (this.hp <= 0) {
       this.dead = true;
       this.deathCause =
+        this.infection > 55 ? 'Заражение крови. Укус надо было лечить.' :
+        this.warm < 25 ? 'Замёрз насмерть. Ночь не прощает.' :
         this.rad > 45 ? 'Лучевая болезнь. Не стоило снимать противогаз.' :
         this.water <= 0 ? 'Обезвоживание.' :
         this.food <= 0 ? 'Голод.' :
@@ -2677,6 +2987,8 @@ const Player = {
   reach() { return 78; },
 
   swing(it) {
+    if (this.stam < 8) { this.say('Нет сил бить'); this.cooldown = 0.4; return; }
+    this.stam = Math.max(0, this.stam - 8);
     this.cooldown = it.rof;
     this.swingT = 0.35;
     this.face = Input.wx > this.x ? 1 : -1;
@@ -2688,10 +3000,11 @@ const Player = {
       // иначе зомби на кочке или вплотную к телу оказывался вне зоны удара
       const zdx = (z.x - hx) * this.face, zdy = (z.y - 24) - hy;
       if (zdx > -34 && zdx < 40 && Math.abs(zdy) < 34) {
-        z.hp -= it.dmg * this.armPenalty();
+        const tired = 0.55 + 0.45 * clamp(this.stam / STAM_MAX, 0, 1);
+        z.hp -= it.dmg * this.armPenalty() * tired;
         z.vx += this.face * 1.6; z.vy = -2.2;
         for (let k = 0; k < 7; k++) Particles.blood(z.x, z.y - 26);
-        Floaters.push(z.x, z.y - 40, String(Math.round(it.dmg * this.armPenalty())), '#e0b090');
+        Floaters.push(z.x, z.y - 40, String(Math.round(it.dmg * this.armPenalty() * tired)), '#e0b090');
         hitAny = true;
       }
     }
@@ -2733,10 +3046,13 @@ const Player = {
       this.digTarget = { x: cx, y: cy }; this.digProgress = 0;
     }
     this.face = Input.wx > this.x ? 1 : -1;
+    // Кирка сама себя не носит: копание тратит выносливость, на нуле — вяло
+    this.stam = Math.max(0, this.stam - dt * 7);
+    const force = 0.5 + 0.5 * clamp(this.stam / STAM_MAX, 0, 1);
     let power = 0.22;                         // руками
     const woody = MATS[m] && (MATS[m].woody || MATS[m].bark || MATS[m].plank || MATS[m].leaf);
     if (it && it.type === 'tool') power = it.power * (woody && it.wood ? it.wood : 1);
-    power *= this.armPenalty() * (1 + 0.15 * this.skills.dig);
+    power *= this.armPenalty() * force * (1 + 0.15 * this.skills.dig);
     // кисть: руками одна частица, деревянным кайлом 3×3, металлической киркой 9×9
     const brush = it && it.type === 'tool' ? (it.brush || 0) : 0;
     const square = brush >= 2;
@@ -2768,6 +3084,7 @@ const Player = {
       this.food = clamp(this.food + (it.food || 0) * 2.5, 0, FOOD_MAX);
       this.water = clamp(this.water + (it.water || 0) * 2.5, 0, WATER_MAX);
       this.hp = clamp(this.hp + (it.hp || 0), 0, 100);
+      if (it.warm) this.warm = clamp(this.warm + it.warm, 0, WARM_MAX);
       this.inv.remove(slot.id, 1);
       if (slot.id === 'can') this.inv.add('scrap', 1);
       this.say('Съел: ' + it.name);
@@ -2777,7 +3094,13 @@ const Player = {
       if (this.water >= WATER_MAX) { this.say('Пить не хочется'); return false; }
       this.water = clamp(this.water + (it.water || 0) * 2.5, 0, WATER_MAX);
       this.hp = clamp(this.hp + (it.hp || 0), 0, 100);
+      if (it.warm) this.warm = clamp(this.warm + it.warm, 0, WARM_MAX);
       if (slot.id === 'canteen_dirty') this.rad = clamp(this.rad + 10, 0, 100);
+      // гнилая вода вдобавок иногда даёт заражение: пей кипячёное
+      if (slot.id === 'canteen_dirty' && Math.random() < 0.3) {
+        this.infection = clamp(this.infection + 12, 0, 100);
+        this.say('Мутную воду пить не стоило');
+      }
       this.inv.remove(slot.id, 1); this.inv.add('canteen', 1);
       this.say('Выпил');
       return true;
@@ -2785,6 +3108,11 @@ const Player = {
     if (it.type === 'med') {
       // принимается сразу: лечит рану, сбивает радиацию, поднимает психику — что может
       let used = false;
+      if (it.cure && this.infection > 0) {
+        this.infection = clamp(this.infection - it.cure, 0, 100);
+        used = true;
+        this.say(this.infection > 0 ? 'Заражение сбито, но не до конца' : 'Заражение вылечено');
+      }
       if (it.rad && this.rad > 0) { this.rad = clamp(this.rad - it.rad, 0, 100); used = true; this.say('Радиация сбита'); }
       if (it.heals && this.heal(it)) used = true;
       if (!used && (it.hp || 0) > 0 && this.hp < 100) { used = true; this.say('Перевязался'); }
@@ -2797,6 +3125,16 @@ const Player = {
       this.inv.remove(slot.id, 1);
       const left = this.inv.add(it.gives[0], it.gives[1]);
       this.say('Вскрыл цинк: ' + it.gives[1] + ' патронов' + (left ? ' (часть не влезла)' : ''));
+      return true;
+    }
+    if (it.type === 'wear') { return this.wearCloth(slot.id); }
+    if (it.type === 'oil') {
+      const gun = this.handItem();
+      if (!gun || gun.type !== 'gun') { this.say('Возьми ствол в руку'); return false; }
+      if (!this.gunWear[gun.kind] && this.jam <= 0) { this.say('Ствол и так чистый'); return false; }
+      this.gunWear[gun.kind] = 0; this.jam = 0;
+      this.inv.remove(slot.id, 1);
+      this.say(gun.name + ' вычищен');
       return true;
     }
     if (it.type === 'mask') { this.wearMask(); return true; }
@@ -2891,7 +3229,7 @@ const Player = {
       return;
     }
     // всё, что просто применяется на себя, уходит в consume — работает и из инвентаря
-    if (['food', 'drink', 'med', 'zinc', 'mask', 'filter'].includes(it.type)) {
+    if (['food', 'drink', 'med', 'zinc', 'mask', 'filter', 'wear', 'oil'].includes(it.type)) {
       this.consume(this.hotbar);
       return;
     }
@@ -2916,6 +3254,21 @@ const Player = {
     }
   },
 
+  // Надеть или снять куртку и дождевик. Снятое падает обратно в рюкзак
+  wearCloth(id) {
+    const it = ITEMS[id];
+    const s = it.slot;
+    if (this.worn[s] === id) {
+      this.worn[s] = null; this.inv.add(id, 1);
+      this.say(it.name + ' снят');
+      return true;
+    }
+    if (!this.inv.remove(id, 1)) return false;
+    if (this.worn[s]) this.inv.add(this.worn[s], 1);
+    this.worn[s] = id;
+    this.say(it.name + ' надет');
+    return true;
+  },
   wearMask() {
     if (this.mask) return;
     if (!this.inv.remove('gasmask', 1)) return;
@@ -2930,6 +3283,11 @@ const Player = {
 
   // ---- оружие ----
   startReload(gun) {
+    if (this.jam > 0) {
+      this.jam = 0; this.reload = 1.1; this.reloadGun = null;
+      this.say('Затвор передёрнут');
+      return;
+    }
     if (this.reload > 0) return;
     const id = gun.kind;
     if (this.mag[id] >= gun.mag) return;
@@ -2947,11 +3305,24 @@ const Player = {
     this.reloadGun = null;
   },
   shoot(gun) {
+    if (this.jam > 0) { this.say('Клин! R — передёрнуть затвор'); this.cooldown = 0.4; return; }
     if (this.mag[gun.kind] <= 0) { this.say('Пусто — R'); this.cooldown = 0.4; return; }
+    // Износ ствола. Чем он выше, тем чаще перекос патрона. Лечится маслом
+    const wear = this.gunWear[gun.kind] || 0;
+    if (Math.random() < Math.pow(wear / 100, 2) * 0.06) {
+      this.jam = 1;
+      this.say('Перекос патрона! R — передёрнуть');
+      Floaters.push(this.x, this.y - 56, 'КЛИН', '#e08a4a');
+      this.cooldown = 0.5;
+      return;
+    }
+    this.gunWear[gun.kind] = Math.min(100, wear + (gun.pellets ? 0.5 : 0.32));
     this.mag[gun.kind]--;
     this.cooldown = gun.rof;
     this.recoil = gun.rec;
-    const spread = gun.spread * (2 - this.armPenalty()) * (1 - 0.12 * this.skills.aim);
+    // мёрзнущие руки и изношенный ствол кладут пули куда попало
+    const shake = 1 + this.shiver * 1.4 + wear / 140;
+    const spread = gun.spread * shake * (2 - this.armPenalty()) * (1 - 0.12 * this.skills.aim);
     const dmg = gun.dmg * (1 + 0.08 * this.skills.aim);
     // дробовик кидает несколько картечин одним выстрелом
     const n = gun.pellets || 1;
@@ -3161,16 +3532,28 @@ const Zombies = {
     }
   },
   spawnTimer: 4,
+  // Орда: каждую третью ночь мёртвые идут стеной. Днём висит предупреждение,
+  // с каждым разом волна гуще и злее
+  hordeNight() { return Game.day % 3 === 0; },
+  hordeActive() { return this.hordeNight() && Game.nightAmount() > 0.55; },
+  // Общий множитель силы заражённых: растёт с прожитыми днями и в бурю
+  power() {
+    return (1 + (Game.day - 1) * 0.11) * (Weather.cur.id === 'storm' ? 1.15 : 1);
+  },
   update(dt) {
     this.updateNests();
     // ночью лезут, днём почти нет; в мёртвой зоне лезут всегда, в городе никогда
     const night = Game.nightAmount();
     const zm = zoneAtPx(Player.x).zombies;
-    this.spawnTimer -= dt * (0.3 + night * 2.4) * zm;
-    const cap = Math.round((3 + night * 7) * zm);
+    const horde = this.hordeActive() ? 3.2 : 1;
+    const wx = Weather.cur.zomb;
+    // с каждым днём мир населённее
+    const byDay = 1 + (Game.day - 1) * 0.07;
+    this.spawnTimer -= dt * (0.3 + night * 2.4) * zm * horde * wx;
+    const cap = Math.round((3 + night * 7) * zm * horde * byDay);
     if (zm <= 0) { this.list.length = 0; }
     else if (this.spawnTimer <= 0 && this.list.length < cap) {
-      this.spawnTimer = rnd(2.5, 7) / Math.max(0.4, zm);
+      this.spawnTimer = rnd(2.5, 7) / Math.max(0.4, zm * horde * wx);
       this.spawn();
     }
     for (let i = this.list.length - 1; i >= 0; i--) {
@@ -3210,7 +3593,11 @@ const Zombies = {
       if (far && !z.nest) { this.list.splice(i, 1); continue; }
       z.face = dx > 0 ? 1 : -1;
       const t = z.type || ZTYPES[0];
-      const see = Math.abs(dx) < (t.gun ? 620 : 320) && !Player.dead;
+      // Ночью они видят дальше, а на запах крови идут почти через полэкрана
+      let bleeding = 0;
+      for (const l of LIMBS) if (Player.body[l.id].bleed) bleeding++;
+      const sense = (t.gun ? 620 : 320) * (1 + Game.nightAmount() * 0.5) + bleeding * 90;
+      const see = Math.abs(dx) < sense && !Player.dead;
       let spd = see ? z.speed : z.speed * 0.35;
       // вооружённые не лезут в упор: подходят на дистанцию выстрела и стреляют
       if (t.gun && see && Math.abs(dx) < 210) spd = -z.speed * 0.5;
@@ -3263,10 +3650,18 @@ const Zombies = {
       // атака
       z.cd = Math.max(0, (z.cd || 0) - dt);
       if (!Player.dead && Math.abs(Player.x - z.x) < 16 && Math.abs(Player.y - z.y) < 40 && z.cd <= 0) {
-        z.cd = 1.15;
+        z.cd = 1.0;
         Player.hp -= z.dmg;
+        Player.stam = Math.max(0, Player.stam - 12);        // удар сбивает дыхание
         const limb = pick(['armL', 'armR', 'legL', 'legR', 'torso', 'head']);
-        if (Math.random() < 0.55) Player.wound(limb, Math.random() < 0.22 ? 2 : 1);
+        if (Math.random() < 0.7) Player.wound(limb, Math.random() < 0.32 ? 2 : 1);
+        // укус заражает. Броня и куртка немного прикрывают
+        const guard = Player.worn.coat ? 0.6 : 1;
+        if (!t.gun && Math.random() < 0.3 * guard) {
+          const was = Player.infection;
+          Player.infection = clamp(Player.infection + rnd(8, 18), 0, 100);
+          if (was === 0) { Player.say('Укус загноился — нужен антибиотик'); Floaters.push(Player.x, Player.y - 64, 'ЗАРАЖЕНИЕ', '#8fc060'); }
+        }
         for (let k = 0; k < 8; k++) Particles.blood(Player.x, Player.y - 30);
         Game.shake = 5;
       }
@@ -3283,18 +3678,20 @@ const Zombies = {
   pickTier() {
     const z = zoneAtPx(Player.x);
     const danger = z.zombies || 1;
-    const byDay = Math.min(6, (Game.day - 1) * 0.6);
-    const base = danger * 2.2 + byDay;
+    const byDay = Math.min(9, (Game.day - 1) * 0.85);
+    const horde = this.hordeActive() ? 3 : 0;
+    const base = danger * 2.4 + byDay + horde;
     const spread = 2 + danger;
-    return clamp(Math.round(base + rnd(-spread, spread)), 0, ZTYPES.length - 4);
+    return clamp(Math.round(base + rnd(-spread, spread)), 0, ZTYPES.length - 2);
   },
 
   make(x, y, tierIdx, face) {
     const t = ztype(tierIdx);
+    const pw = this.power();
     const z = {
       type: t, x, y, vx: 0, vy: 0,
-      hp: t.hp * rnd(0.9, 1.15), maxHp: t.hp,
-      dmg: t.dmg, speed: t.spd * rnd(0.92, 1.08),
+      hp: t.hp * rnd(0.9, 1.15) * pw, maxHp: t.hp,
+      dmg: t.dmg * pw, speed: t.spd * rnd(0.92, 1.08) * Math.min(1.35, 1 + (Game.day - 1) * 0.015),
       face: face || (Math.random() < 0.5 ? -1 : 1),
       phase: Math.random() * 6, onGround: false,
       wander: Math.random() < 0.5 ? -1 : 1,
@@ -3556,37 +3953,94 @@ const TRADERS = [
   {
     id: 'quartermaster', name: 'Завхоз', zone: 'city', at: 0.5, coat: '#6b5a3c', hat: '#4a3f2a',
     greet: 'Бери что надо, только не задерживай очередь.',
-    stock: [['plank', 5, 6], ['stone', 10, 8], ['wood', 20, 10], ['coal', 5, 3],
-            ['iron', 5, 8], ['copper', 5, 7], ['scrap', 5, 6], ['ladder', 4, 5]]
+    // стройка и сырьё. Оружия нет вовсе — за ним к оружейнику
+    stock: [['plank', 5, 7, 20], ['stone', 10, 9, 20], ['wood', 20, 12, 16], ['coal', 5, 4, 24],
+            ['iron', 5, 11, 12], ['copper', 5, 9, 12], ['scrap', 5, 8, 16], ['ladder', 4, 6, 12],
+            ['clay', 10, 7, 12], ['lowgrade', 5, 14, 8], ['home_flag', 1, 40, 1], ['hammer', 1, 45, 1]],
+    buys: { wood: 1, stone: 1, plank: 1, coal: 1, iron: 1, copper: 1, scrap: 1, clay: 1, hqm: 1.4, dirt: 0.6 }
   },
   {
     id: 'medic', name: 'Фельдшер', zone: 'city', at: 0.28, coat: '#b9b3a2', hat: '#8f8b7c',
     greet: 'Раны показывай сразу, не жди, пока почернеют.',
-    stock: [['bandage', 2, 9], ['splint', 1, 12], ['medkit', 1, 26], ['antirad', 1, 10],
-            ['filter', 1, 14], ['can', 2, 12], ['canteen_clean', 2, 8], ['seeds', 2, 6]]
+    // единственный, у кого есть антибиотик — без него укус тебя доест
+    stock: [['bandage', 2, 11, 16], ['splint', 1, 15, 8], ['medkit', 1, 34, 4], ['antirad', 1, 13, 8],
+            ['antibiotic', 1, 46, 3], ['filter', 1, 18, 6], ['canteen_clean', 2, 10, 10],
+            ['seeds', 2, 8, 8], ['tea', 1, 14, 6], ['stew', 1, 22, 4]],
+    buys: { rag: 1.2, potato: 1, potato_baked: 1.2, seeds: 1, meat_rot: 0.4, can: 1 }
   },
   {
     id: 'gunsmith', name: 'Оружейник', zone: 'city', at: 0.72, coat: '#4a4e52', hat: '#33373b',
     greet: 'Патроны есть. Стрелять научишься сам.',
-    stock: [['ammo9', 20, 12], ['ammo545', 20, 16], ['ammo762', 20, 20], ['buckshot', 10, 14],
-            ['zinc9', 1, 90], ['pistol', 1, 120], ['sawnoff', 1, 140], ['shotgun', 1, 210],
-            ['grenade', 1, 60]]
+    // стволы, патроны и масло. Ничего съедобного и ничего строительного
+    stock: [['ammo9', 20, 15, 12], ['ammo545', 20, 20, 10], ['ammo762', 20, 26, 8], ['buckshot', 10, 17, 12],
+            ['gunoil', 1, 20, 6], ['zinc9', 1, 110, 2], ['zinc545', 1, 150, 1],
+            ['pistol', 1, 150, 1], ['sawnoff', 1, 175, 1], ['shotgun', 1, 260, 1],
+            ['revolver', 1, 230, 1], ['smg', 1, 420, 1], ['grenade', 1, 75, 3]],
+    buys: { gunpowder: 1.2, sulfur: 1.2, iron: 0.8, scrap: 0.8, ammo9: 0.9, ammo545: 0.9, ammo762: 0.9,
+            buckshot: 0.9, pistol: 1, revolver: 1, shotgun: 1, sawnoff: 1, smg: 1, rifle: 1, sniper: 1, mg: 1 }
   },
   {
     id: 'prospector', name: 'Старатель', zone: 'mine', at: 0.5, coat: '#7a5a34', hat: '#5c4426',
     greet: 'Наверху за это дадут вдвое. Но наверх ещё дойти надо.',
-    stock: [['pick', 1, 90], ['torch', 6, 8], ['coal', 10, 5], ['iron', 10, 14],
-            ['drill', 1, 260], ['fuel', 5, 18], ['canteen_clean', 1, 5]]
+    // инструмент, свет и топливо. Цены выше городских — он тут один
+    stock: [['pick', 1, 110, 1], ['pick_wood', 1, 24, 3], ['torch', 6, 10, 12], ['coal', 10, 7, 16],
+            ['iron', 10, 18, 8], ['drill', 1, 320, 1], ['fuel', 5, 22, 8],
+            ['canteen_clean', 1, 8, 8], ['workbench', 1, 60, 2], ['furnace', 1, 90, 1]],
+    buys: { iron_ore: 1.2, copper_ore: 1.2, hqm_ore: 2, sulfur_ore: 1.2, stone: 0.8, coal: 1 }
   },
   {
     id: 'scav', name: 'Барахольщик', zone: 'waste', at: 0.78, coat: '#5e5344', hat: '#453c30',
     greet: 'Хлам? Это не хлам. Это запчасти.',
-    stock: [['scrap', 10, 9], ['rag', 6, 4], ['plank', 6, 7], ['bandage', 1, 7],
-            ['can', 1, 9], ['gasmask', 1, 140], ['filter', 2, 26]]
+    // тряпьё, одежда и всё, что нашёл. Скупает вообще всё, но за копейки
+    stock: [['scrap', 10, 11, 14], ['rag', 6, 5, 16], ['plank', 6, 8, 12], ['bandage', 1, 9, 8],
+            ['can', 1, 12, 8], ['coat', 1, 95, 1], ['hood', 1, 70, 1],
+            ['gasmask', 1, 170, 1], ['filter', 2, 32, 4], ['campfire', 1, 30, 2]],
+    buys: { rag: 1, scrap: 0.9, wood: 0.7, plank: 0.7, meat_rot: 0.5, bandage: 0.8, stick: 0.5, can: 1 }
   }
 ];
 // общий прайс на случай, если торговец не найден
 const SHOP = TRADERS[0].stock;
+
+// Склад торговца: у каждого свой запас, который кончается и приходит обратно
+// только с новым днём. Скупает он тоже не всё — только то, что по профилю
+const Shop = {
+  left: {}, day: 0,
+  key(def, id) { return def.id + ':' + id; },
+  restock() {
+    this.left = {};
+    for (const d of TRADERS) for (const [id, , , lim] of d.stock) this.left[this.key(d, id)] = lim || 1;
+    this.day = Game.day;
+  },
+  ensure() { if (this.day !== Game.day) this.restock(); },
+  stockLeft(def, id) { this.ensure(); const v = this.left[this.key(def, id)]; return v === undefined ? 0 : v; },
+  takeOne(def, id) { this.ensure(); this.left[this.key(def, id)] = Math.max(0, this.stockLeft(def, id) - 1); },
+  // Цена скупки. Торговец берёт только своё и платит втрое меньше, чем сам
+  // просит: наживаться на перепродаже не выйдет
+  sellPrice(def, id) {
+    const mul = def.buys && def.buys[id];
+    if (!mul) return 0;
+    return Math.max(1, Math.round(unitPrice(id) * 0.34 * mul));
+  }
+};
+
+// Прейскурант мира: за основу берём цены самих торговцев, а на то, чем никто
+// не торгует (руда, порох, оружие с боя), даём отдельную вилку
+const EXTRA_PRICE = {
+  iron_ore: 5, copper_ore: 4, hqm_ore: 14, sulfur_ore: 5, sulfur: 9, gunpowder: 7,
+  charcoal: 2, hqm: 26, dirt: 1, stick: 1, potato: 4, potato_baked: 7, meat_rot: 2,
+  rifle: 380, sniper: 520, mg: 700, smg: 300
+};
+let PRICE_INDEX = null;
+function unitPrice(id) {
+  if (!PRICE_INDEX) {
+    PRICE_INDEX = {};
+    for (const d of TRADERS) for (const [i, n, p] of d.stock) {
+      const u = p / Math.max(1, n);
+      if (PRICE_INDEX[i] === undefined || u < PRICE_INDEX[i]) PRICE_INDEX[i] = u;
+    }
+  }
+  return PRICE_INDEX[id] !== undefined ? PRICE_INDEX[id] : (EXTRA_PRICE[id] || 2);
+}
 
 const Missions = {
   list: [
@@ -5086,28 +5540,48 @@ const UI = {
     this.bar(g, bx, by, bw, 12, P.hp, ['#8c2b26', '#d4574a'], Math.round(P.hp) + ' здоровье');
     this.bar(g, bx, by + 20, bw, 12, P.food, ['#7a5c1e', '#d8a83c'], Math.round(P.food) + ' / ' + FOOD_MAX + ' сытость', null, FOOD_MAX);
     this.bar(g, bx, by + 40, bw, 12, P.water, ['#1e5c72', '#3ca8d0'], Math.round(P.water) + ' / ' + WATER_MAX + ' вода', null, WATER_MAX);
+    // выносливость: пустая — не побежишь и слабо бьёшь
+    this.bar(g, bx, by + 60, bw, 9, P.stam, P.winded ? ['#6a5a20', '#a08a34'] : ['#3f6a3c', '#7fc06a'],
+      Math.round(P.stam) + (P.winded ? ' выдохся' : ' выносливость'), null, STAM_MAX);
+    // тепло
+    this.bar(g, bx, by + 76, bw, 9, P.warm, P.warm < 30 ? ['#2a4a7a', '#5f9ec4'] : ['#7a4a1e', '#d09848'],
+      Math.round(P.warm) + ' тепло', null, WARM_MAX);
 
     // радиация и фильтр
     const radW = 120;
-    g.fillStyle = 'rgba(0,0,0,0.5)'; g.beginPath(); g.roundRect(bx, by + 86, radW, 8, 4); g.fill();
+    g.fillStyle = 'rgba(0,0,0,0.5)'; g.beginPath(); g.roundRect(bx, by + 96, radW, 8, 4); g.fill();
     g.fillStyle = P.rad > 45 ? '#c8d24a' : '#7d8a3c';
-    g.beginPath(); g.roundRect(bx + 1, by + 87, (radW - 2) * clamp(P.rad / 100, 0, 1), 6, 3); g.fill();
-    this.text(g, 'радиация ' + Math.round(P.rad) + '%', bx + radW + 8, by + 94, P.rad > 45 ? '#d8e06a' : 'rgba(220,214,196,0.7)', 11, '600');
+    g.beginPath(); g.roundRect(bx + 1, by + 97, (radW - 2) * clamp(P.rad / 100, 0, 1), 6, 3); g.fill();
+    this.text(g, 'радиация ' + Math.round(P.rad) + '%', bx + radW + 8, by + 104, P.rad > 45 ? '#d8e06a' : 'rgba(220,214,196,0.7)', 11, '600');
 
-    if (P.mask) {
-      g.fillStyle = 'rgba(0,0,0,0.5)'; g.beginPath(); g.roundRect(bx, by + 100, radW, 8, 4); g.fill();
-      g.fillStyle = P.filterWear > 30 ? '#4a8a6a' : '#c07a3c';
-      g.beginPath(); g.roundRect(bx + 1, by + 101, (radW - 2) * clamp(P.filterWear / 100, 0, 1), 6, 3); g.fill();
-      this.text(g, 'фильтр ' + Math.round(P.filterWear) + '%', bx + radW + 8, by + 108, 'rgba(220,214,196,0.7)', 11, '600');
-    } else {
-      this.text(g, '⚠ ПРОТИВОГАЗ СНЯТ', bx, by + 108, '#e07a5a', 12, '800');
+    let ny = by + 110;
+    if (P.infection > 0) {
+      g.fillStyle = 'rgba(0,0,0,0.5)'; g.beginPath(); g.roundRect(bx, ny, radW, 8, 4); g.fill();
+      g.fillStyle = P.infection > 40 ? '#8fc060' : '#5f8a44';
+      g.beginPath(); g.roundRect(bx + 1, ny + 1, (radW - 2) * clamp(P.infection / 100, 0, 1), 6, 3); g.fill();
+      this.text(g, 'заражение ' + Math.round(P.infection) + '%', bx + radW + 8, ny + 8, '#a8d078', 11, '700');
+      ny += 14;
     }
+    if (P.mask) {
+      g.fillStyle = 'rgba(0,0,0,0.5)'; g.beginPath(); g.roundRect(bx, ny, radW, 8, 4); g.fill();
+      g.fillStyle = P.filterWear > 30 ? '#4a8a6a' : '#c07a3c';
+      g.beginPath(); g.roundRect(bx + 1, ny + 1, (radW - 2) * clamp(P.filterWear / 100, 0, 1), 6, 3); g.fill();
+      this.text(g, 'фильтр ' + Math.round(P.filterWear) + '%', bx + radW + 8, ny + 8, 'rgba(220,214,196,0.7)', 11, '600');
+      ny += 14;
+    } else {
+      this.text(g, '⚠ ПРОТИВОГАЗ СНЯТ', bx, ny + 8, '#e07a5a', 12, '800');
+      ny += 14;
+    }
+    // что надето
+    const wornList = [];
+    for (const k in P.worn) if (P.worn[k]) wornList.push(ITEMS[P.worn[k]].name);
+    if (wornList.length) { this.text(g, 'на себе: ' + wornList.join(', '), bx, ny + 8, 'rgba(180,190,170,0.6)', 11, '500'); ny += 14; }
 
     // тело: подсветка травм
     let wounds = [];
     for (const l of LIMBS) if (P.body[l.id].w > 0) wounds.push(l);
     if (wounds.length) {
-      let wy = by + 130;
+      let wy = ny + 22;
       this.text(g, 'ТРАВМЫ (B)', bx, wy, 'rgba(220,140,110,0.8)', 11, '800'); wy += 15;
       for (const l of wounds.slice(0, 4)) {
         const b = P.body[l.id];
@@ -5123,7 +5597,16 @@ const UI = {
     this.text(g, 'день ' + Game.day + ' · ' + (Game.nightAmount() > 0.5 ? 'ночь' : 'день'), W - 24, 52, 'rgba(200,190,160,0.6)', 12, '500', 'right');
     const z = zoneAtPx(P.x);
     this.text(g, z.name + ' · M — карта', W - 24, 72, z.color, 13, '700', 'right');
-    this.text(g, 'зомби рядом: ' + Zombies.list.length, W - 24, 90, 'rgba(200,190,160,0.4)', 11, '500', 'right');
+    this.text(g, Weather.cur.name.toLowerCase() + ' · зомби рядом: ' + Zombies.list.length,
+      W - 24, 90, Weather.cur.id === 'clear' ? 'rgba(200,190,160,0.4)' : Weather.cur.col, 11, '600', 'right');
+    // предупреждение об орде
+    if (Zombies.hordeNight()) {
+      const on = Zombies.hordeActive();
+      const a = on ? 0.55 + Math.sin(performance.now() / 260) * 0.35 : 0.75;
+      g.globalAlpha = a;
+      this.text(g, on ? '⚑ ОРДА ИДЁТ' : '⚑ сегодня ночью будет орда', W - 24, 150, '#e0603c', on ? 16 : 12, '800', 'right');
+      g.globalAlpha = 1;
+    }
     // монеты и навыки
     g.fillStyle = '#e8cf72';
     g.beginPath(); g.arc(W - 122, 108, 5.5, 0, 7); g.fill();
@@ -5146,7 +5629,17 @@ const UI = {
       this.text(g, it.name, W / 2, hy - 12, '#e8e2ca', 13, '700', 'center');
       if (it.type === 'gun') {
         const m = P.mag[it.kind] || 0, res = P.inv.count(it.ammo);
-        this.text(g, m + ' / ' + res + (P.reload > 0 ? '   перезарядка…' : ''), W / 2, hy - 30, m > 0 ? '#e8d8a0' : '#d07a5a', 15, '800', 'center');
+        const label = P.jam > 0 ? 'КЛИН — R' : m + ' / ' + res + (P.reload > 0 ? '   перезарядка…' : '');
+        this.text(g, label, W / 2, hy - 30, P.jam > 0 ? '#e08a4a' : m > 0 ? '#e8d8a0' : '#d07a5a', 15, '800', 'center');
+        // износ ствола: чем краснее, тем ближе перекос
+        const wear = P.gunWear[it.kind] || 0;
+        if (wear > 3) {
+          const ww = 90, wxp = W / 2 - ww / 2;
+          g.fillStyle = 'rgba(0,0,0,0.5)'; g.beginPath(); g.roundRect(wxp, hy - 46, ww, 5, 2.5); g.fill();
+          g.fillStyle = wear > 65 ? '#c04a2f' : wear > 35 ? '#c08a3c' : '#5f7f5a';
+          g.beginPath(); g.roundRect(wxp + 1, hy - 45, (ww - 2) * clamp(wear / 100, 0, 1), 3, 1.5); g.fill();
+          this.text(g, 'износ ' + Math.round(wear) + '%', W / 2 + ww / 2 + 8, hy - 41, 'rgba(200,190,160,0.55)', 10, '600');
+        }
       } else if (it.desc) {
         this.text(g, it.desc, W / 2, hy - 30, 'rgba(200,190,160,0.55)', 11, '500', 'center');
       }
@@ -5568,36 +6061,97 @@ const UI = {
   // ---- торговец ----
   shopTrader: null,
 
+  shopTab: 'buy', shopScroll: 0,
+
   drawShop(g) {
     const W = this.W, H = this.H;
+    const def = this.shopTrader;
     g.fillStyle = 'rgba(0,0,0,0.66)'; g.fillRect(0, 0, W, H);
-    const pw = 900, ph = 560, px = W / 2 - pw / 2, py = H / 2 - ph / 2;
+    const pw = 920, ph = 600, px = W / 2 - pw / 2, py = H / 2 - ph / 2;
     const disc = 1 - 0.08 * Player.skills.trade;
-    const who = this.shopTrader ? this.shopTrader.name : 'Торговец';
+    const who = def ? def.name : 'Торговец';
     this.panel(g, px, py, pw, ph, who + (Player.skills.trade ? ' · скидка ' + Math.round((1 - disc) * 100) + '%' : ''));
-    if (this.shopTrader) this.text(g, this.shopTrader.greet, px + pw - 16, py + 26, 'rgba(200,190,160,0.55)', 12, '500', 'right');
+    if (def) this.text(g, def.greet, px + 20, py + 50, 'rgba(200,190,160,0.55)', 12, '500');
     this.text(g, Player.coins + ' монет', px + pw - 24, py + 26, '#e8cf72', 15, '800', 'right');
 
-    let i = 0;
-    const cw = (pw - 40 - 2 * 12) / 3, chh = 62;
-    for (const [id, n, price] of SHOP) {
-      const x = px + 20 + (i % 3) * (cw + 12), y = py + 56 + Math.floor(i / 3) * (chh + 8);
-      const cost = Math.max(1, Math.round(price * disc));
-      const can = Player.coins >= cost;
-      const over = Input.mx > x && Input.mx < x + cw && Input.my > y && Input.my < y + chh;
+    // вкладки: купить у него / продать ему
+    if (this.btn(g, px + pw - 250, py + 44, 110, 26, 'Купить', this.shopTab === 'buy')) { this.shopTab = 'buy'; this.shopScroll = 0; }
+    if (this.btn(g, px + pw - 132, py + 44, 110, 26, 'Продать', this.shopTab === 'sell')) { this.shopTab = 'sell'; this.shopScroll = 0; }
+
+    if (!def) { this.text(g, 'Esc — уйти', px + pw - 24, py + ph - 16, 'rgba(200,190,160,0.45)', 12, '500', 'right'); return; }
+    Shop.ensure();
+
+    const listTop = py + 82, listH = ph - 82 - 42;
+    const cw = (pw - 40 - 2 * 12) / 3, chh = 66, rows = Math.floor(listH / (chh + 8));
+
+    // ---- что показываем ----
+    const entries = [];
+    if (this.shopTab === 'buy') {
+      for (const [id, n, price] of def.stock) {
+        entries.push({ id, n, price: Math.max(1, Math.round(price * disc)), left: Shop.stockLeft(def, id) });
+      }
+    } else {
+      // всё из рюкзака, что этот торговец берёт
+      const seen = {};
+      for (const slot of Player.inv.slots) {
+        if (!slot) continue;
+        const p = Shop.sellPrice(def, slot.id);
+        if (!p) continue;
+        if (seen[slot.id]) { seen[slot.id].have += slot.n; continue; }
+        seen[slot.id] = { id: slot.id, n: 1, price: p, have: slot.n, sell: true };
+        entries.push(seen[slot.id]);
+      }
+    }
+
+    // прокрутка колесом
+    const maxScroll = Math.max(0, Math.ceil(entries.length / 3) - rows);
+    if (Input.wheel && maxScroll > 0) {
+      this.shopScroll = clamp(this.shopScroll + Input.wheel, 0, maxScroll);
+      Input.wheel = 0;
+    }
+    this.shopScroll = clamp(this.shopScroll, 0, maxScroll);
+
+    if (!entries.length) {
+      this.text(g, this.shopTab === 'buy' ? 'Всё раскупили. Приходи завтра.' : 'Он такого не берёт. Ищи другого торговца.',
+        px + pw / 2, listTop + 60, 'rgba(200,190,160,0.5)', 14, '600', 'center');
+    }
+
+    const from = this.shopScroll * 3;
+    for (let k = 0; k < rows * 3 && from + k < entries.length; k++) {
+      const e = entries[from + k];
+      const x = px + 20 + (k % 3) * (cw + 12), y = listTop + Math.floor(k / 3) * (chh + 8);
+      const out = !e.sell && e.left <= 0;
+      const can = e.sell ? true : (Player.coins >= e.price && !out);
+      const over = this.guard <= 0 && Input.mx > x && Input.mx < x + cw && Input.my > y && Input.my < y + chh;
       g.fillStyle = over && can ? 'rgba(200,185,120,0.16)' : 'rgba(255,255,255,0.045)';
       g.beginPath(); g.roundRect(x, y, cw, chh, 8); g.fill();
-      g.strokeStyle = can ? 'rgba(200,190,140,0.35)' : 'rgba(150,140,120,0.15)';
+      g.strokeStyle = can ? (e.sell ? 'rgba(140,190,150,0.4)' : 'rgba(200,190,140,0.35)') : 'rgba(150,140,120,0.15)';
       g.lineWidth = 1; g.beginPath(); g.roundRect(x, y, cw, chh, 8); g.stroke();
-      g.save(); g.translate(x + 8, y + 12); if (!can) g.globalAlpha = 0.45; ITEMS[id].icon(g, 38); g.restore();
-      this.text(g, ITEMS[id].name + (n > 1 ? ' ×' + n : ''), x + 54, y + 26, can ? '#e8e2ca' : 'rgba(200,190,160,0.5)', 13, '700');
-      this.text(g, cost + ' монет', x + 54, y + 44, can ? '#e8cf72' : 'rgba(210,180,110,0.45)', 12, '600');
+      g.save(); g.translate(x + 8, y + 14); if (!can) g.globalAlpha = 0.4; ITEMS[e.id].icon(g, 38); g.restore();
+      this.text(g, ITEMS[e.id].name + (e.n > 1 ? ' ×' + e.n : ''), x + 54, y + 24,
+        can ? '#e8e2ca' : 'rgba(200,190,160,0.5)', 13, '700');
+      this.text(g, (e.sell ? '+' : '') + e.price + ' монет', x + 54, y + 42,
+        e.sell ? '#8fc07a' : (can ? '#e8cf72' : 'rgba(210,180,110,0.45)'), 12, '600');
+      this.text(g, e.sell ? 'у тебя ' + e.have + ' шт' : (out ? 'распродано до завтра' : 'осталось ' + e.left),
+        x + 54, y + 58, out ? '#c0705a' : 'rgba(200,190,160,0.45)', 11, '500');
+
       if (over && Input.mclick && can) {
-        Player.coins -= cost;
-        if (Player.inv.add(id, n) > 0) Drops.add(Player.x, Player.y - 20, id, n);
-        Player.say('Куплено: ' + ITEMS[id].name);
+        if (e.sell) {
+          Player.inv.remove(e.id, 1);
+          Player.coins += e.price;
+          Player.say('Продал: ' + ITEMS[e.id].name + ' за ' + e.price);
+        } else {
+          Player.coins -= e.price;
+          Shop.takeOne(def, e.id);
+          if (Player.inv.add(e.id, e.n) > 0) Drops.add(Player.x, Player.y - 20, e.id, e.n);
+          Player.say('Куплено: ' + ITEMS[e.id].name);
+        }
       }
-      i++;
+    }
+
+    if (maxScroll > 0) {
+      this.text(g, 'колесо — листать (' + (this.shopScroll + 1) + '/' + (maxScroll + 1) + ')',
+        px + 24, py + ph - 16, 'rgba(200,190,160,0.45)', 12, '500');
     }
     this.text(g, 'Esc — уйти', px + pw - 24, py + ph - 16, 'rgba(200,190,160,0.45)', 12, '500', 'right');
   },
@@ -5627,11 +6181,11 @@ const UI = {
   drawOptions(g) {
     const W = this.W, H = this.H;
     g.fillStyle = 'rgba(0,0,0,0.72)'; g.fillRect(0, 0, W, H);
-    const pw = 520, ph = 500, px = W / 2 - pw / 2, py = H / 2 - ph / 2;
+    const pw = 520, ph = 560, px = W / 2 - (pw + 436) / 2, py = H / 2 - ph / 2;
     this.panel(g, px, py, pw, ph, 'Управление');
     const rows = [
       ['A / D', 'идти влево-вправо'],
-      ['Shift', 'бежать (тратит еду и воду)'],
+      ['Shift', 'бежать (жжёт выносливость, еду и воду)'],
       ['Space / W', 'подпрыгнуть'],
       ['ЛКМ', 'копать породу · стрелять'],
       ['ПКМ', 'применить предмет: поставить, съесть, надеть'],
@@ -5643,8 +6197,18 @@ const UI = {
       ['I', 'инвентарь (30 ячеек) и снаряжение'],
       ['B', 'состояние тела и лечение'],
       ['C', 'крафт'],
-      ['R', 'перезарядка'],
+      ['R', 'перезарядка · снять клин'],
       ['Esc', 'пауза']
+    ];
+    const hard = [
+      'Выносливость: бег, прыжки, удары и кирка. Пустая — идёшь шагом.',
+      'Тепло: ночь и дождь студят. Греют костёр, дом, ватник, чай и похлёбка.',
+      'Заражение: приходит с укусом, само не проходит. Нужен антибиотик.',
+      'Износ ствола: чем больше стрелял, тем чаще клин. Лечится маслом.',
+      'Орда: каждую третью ночь. Днём приходит предупреждение.',
+      'Погода: дождь студит, кислотный жжёт, буря поднимает мёртвых.',
+      'Набитый рюкзак замедляет и быстрее выматывает.',
+      'У каждого торговца свой товар, свой запас на день и своя скупка.'
     ];
     let y = py + 60;
     for (const [k, v] of rows) {
@@ -5652,6 +6216,25 @@ const UI = {
       this.text(g, k, px + 32, y + 4, '#e0d8bc', 12, '700');
       this.text(g, v, px + 130, y + 4, 'rgba(200,190,160,0.75)', 12, '500');
       y += 31;
+    }
+    // правая колонка: что изменилось в правилах выживания
+    const hx2 = px + pw + 16;
+    this.panel(g, hx2, py, 420, ph, 'Чем эта игра тебя убьёт');
+    let hy2 = py + 62;
+    for (const line of hard) {
+      g.fillStyle = '#c0562f';
+      g.beginPath(); g.arc(hx2 + 24, hy2 - 4, 2.6, 0, 7); g.fill();
+      const words = line.split(' ');
+      let cur = '';
+      const lines = [];
+      g.font = '500 12px system-ui, sans-serif';
+      for (const w of words) {
+        const test = cur ? cur + ' ' + w : w;
+        if (g.measureText(test).width > 356) { lines.push(cur); cur = w; } else cur = test;
+      }
+      if (cur) lines.push(cur);
+      for (const l of lines) { this.text(g, l, hx2 + 36, hy2, 'rgba(210,202,178,0.85)', 12, '500'); hy2 += 16; }
+      hy2 += 10;
     }
     if (this.btn(g, px + 20, py + ph - 56, pw - 40, 40, this.fromMenu ? 'Назад в меню' : 'Продолжить')) {
       if (this.fromMenu) { this.screen = 'menu'; this.fromMenu = false; }
@@ -5707,6 +6290,88 @@ const UI = {
 // game.js — цикл, камера, фон, свет, взаимодействие
 'use strict';
 
+// ---- погода ----
+// Пять состояний, каждое меняет и картинку, и правила выживания.
+// Дождь студит и мешает видеть, кислотный дождь вдобавок жжёт радиацией,
+// буря поднимает зомби даже днём. Погода сама сменяется каждые несколько минут
+const WEATHERS = [
+  { id: 'clear', name: 'Ясно',              w: 34, wet: 0,    dark: 0,    rad: 0,   zomb: 1,   col: '#c9c2ac' },
+  { id: 'fog',   name: 'Туман',             w: 20, wet: 0.15, dark: 0.18, rad: 0,   zomb: 1.2, col: '#a8b0b8' },
+  { id: 'rain',  name: 'Дождь',             w: 22, wet: 1,    dark: 0.3,  rad: 0,   zomb: 1.15,col: '#7aa0c0' },
+  { id: 'acid',  name: 'Кислотный дождь',   w: 10, wet: 1,    dark: 0.42, rad: 1.6, zomb: 1.3, col: '#9ac04a' },
+  { id: 'storm', name: 'Буря',              w: 8,  wet: 1.3,  dark: 0.55, rad: 0.5, zomb: 1.8, col: '#c05a4a' }
+];
+
+const Weather = {
+  cur: WEATHERS[0], next: null, t: 120, fade: 1, drops: [], flash: 0,
+  reset() { this.cur = WEATHERS[0]; this.t = 150; this.fade = 1; this.drops.length = 0; this.flash = 0; },
+  roll() {
+    // с каждым прожитым днём ясной погоды всё меньше — мир портится
+    const bad = Math.min(2.6, 1 + (Game.day - 1) * 0.16);
+    let total = 0;
+    const ws = WEATHERS.map(w => {
+      const weight = w.id === 'clear' ? w.w / bad : w.w * bad;
+      total += weight; return { w, weight };
+    });
+    let r = Math.random() * total;
+    for (const e of ws) { r -= e.weight; if (r <= 0) return e.w; }
+    return WEATHERS[0];
+  },
+  wetness() { return this.cur.wet * this.fade; },
+  darkness() { return this.cur.dark * this.fade; },
+  update(dt) {
+    this.t -= dt;
+    if (this.t <= 0) {
+      const w = this.roll();
+      this.t = rnd(90, 260);
+      if (w !== this.cur) {
+        this.cur = w; this.fade = 0;
+        Player.say('Погода: ' + w.name.toLowerCase());
+      }
+    }
+    this.fade = Math.min(1, this.fade + dt * 0.25);
+    if (this.cur.id === 'storm' && Math.random() < dt * 0.22) this.flash = 0.5;
+    if (this.flash > 0) this.flash -= dt;
+  },
+  // капли рисуются в экранных координатах — дёшево и всегда попадают в кадр
+  draw(g) {
+    // туман: несколько мягких полос, ползущих поперёк кадра
+    if (this.cur.id === 'fog' && this.fade > 0.02) {
+      g.save();
+      for (let i = 0; i < 4; i++) {
+        const y = UI.H * (0.32 + i * 0.16) + Math.sin(Game.time * 0.2 + i) * 18;
+        const off = (Game.cam.x * (0.05 + i * 0.03) + Game.time * (8 + i * 5)) % (UI.W + 600) - 300;
+        const fg = g.createLinearGradient(0, y - 90, 0, y + 90);
+        fg.addColorStop(0, 'rgba(190,198,205,0)');
+        fg.addColorStop(0.5, 'rgba(190,198,205,' + (0.26 * this.fade) + ')');
+        fg.addColorStop(1, 'rgba(190,198,205,0)');
+        g.fillStyle = fg;
+        g.beginPath(); g.ellipse(off + UI.W / 2, y, UI.W * 0.9, 90, 0, 0, 7); g.fill();
+      }
+      g.restore();
+    }
+    const wet = this.wetness();
+    if (wet <= 0.02) return;
+    const n = Math.round(wet * 260);
+    const acid = this.cur.id === 'acid';
+    g.save();
+    g.strokeStyle = acid ? 'rgba(170,205,110,0.5)' : 'rgba(180,205,230,0.42)';
+    g.lineWidth = 1.1;
+    const t = Game.time * 60;
+    for (let i = 0; i < n; i++) {
+      const h = hash2(i * 3, 11), h2 = hash2(i * 7, 23);
+      const sp = 420 + h2 * 520;
+      const x = (h * UI.W + Game.cam.x * 0.6 + (this.cur.id === 'storm' ? t * 3 : t * 0.6)) % UI.W;
+      const y = (h2 * UI.H + t * sp * 0.06) % UI.H;
+      const len = 9 + h * 14;
+      const skew = this.cur.id === 'storm' ? 7 : 2.5;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x - skew, y + len); g.stroke();
+    }
+    g.restore();
+    if (this.flash > 0.2) { g.fillStyle = 'rgba(220,230,255,' + (this.flash - 0.2) * 0.7 + ')'; g.fillRect(0, 0, UI.W, UI.H); }
+  }
+};
+
 const Game = {
   canvas: null, ctx: null, lightCanvas: null, lctx: null,
   cam: { x: 0, y: 0 }, zoom: 2.1,
@@ -5742,6 +6407,7 @@ const Game = {
     Machines.list.length = 0; Machines.torches.length = 0;
     Player.dead = false;
     Player.hp = 100; Player.food = FOOD_MAX; Player.water = WATER_MAX; Player.rad = 6;
+    Player.stam = STAM_MAX; Player.warm = WARM_MAX; Player.infection = 0;
     Player.mask = false; Player.filterWear = 100;
     Player.init();
     this.time = DAY_LEN * 0.34; this.day = 1;
@@ -5756,19 +6422,20 @@ const Game = {
     Nodes.seed();
     Throwables.list.length = 0;
     Explosions.list.length = 0;
+    Weather.reset();
 
     // стартовый набор строителя: план, молоток и материал на первый дом
     Player.inv.add('plan', 1);
     Player.inv.add('hammer', 1);
-    Player.inv.add('wood', 300);
-    Player.inv.add('stone', 60);
-    Player.inv.add('ladder', 12);
+    // Хардкор: стартового добра ощутимо меньше. Дробовик, аптечку и большую
+    // часть материала теперь надо добывать самому
+    Player.inv.add('wood', 120);
+    Player.inv.add('stone', 24);
+    Player.inv.add('ladder', 6);
     Player.inv.add('home_flag', 1);
     Player.inv.add('sawnoff', 1);
-    Player.inv.add('shotgun', 1);
-    Player.inv.add('buckshot', 40);
-    Player.inv.add('bandage', 5);
-    Player.inv.add('medkit', 1);
+    Player.inv.add('buckshot', 8);
+    Player.inv.add('bandage', 2);
     for (const m of Missions.list) { m.state = 0; m.from = 0; }
 
     // стартовый лут в пустоши: противогаз рядом и два ящика без повторов
@@ -5832,12 +6499,18 @@ const Game = {
   // Функция перехода удалена целиком, чтобы её нельзя было вызвать случайно
 
   sleep() {
+    // Спать в ночь орды нельзя: они уже под дверью
+    if (Zombies.hordeActive()) { Player.say('Не до сна — орда уже здесь'); return; }
     this.time = DAY_LEN * 0.3; this.day++;
-    Player.hp = clamp(Player.hp + 14, 0, 100);
-    Player.food = clamp(Player.food - 40, 1, FOOD_MAX);
-    Player.water = clamp(Player.water - 46, 1, WATER_MAX);
+    Player.hp = clamp(Player.hp + 10, 0, 100);
+    Player.food = clamp(Player.food - 70, 1, FOOD_MAX);
+    Player.water = clamp(Player.water - 80, 1, WATER_MAX);
+    Player.stam = STAM_MAX;
+    Player.warm = clamp(Player.warm + 40, 0, WARM_MAX);
+    // заражение за ночь только крепнет
+    if (Player.infection > 0) Player.infection = clamp(Player.infection + 12, 0, 100);
     Zombies.list.length = 0;
-    Player.say('Утро. Ты спал в своей кровати');
+    Player.say('Утро. Ты спал в своей кровати' + (Zombies.hordeNight() ? '. Сегодня ночью придёт орда' : ''));
   },
 
   // возрождение на своей кровати: мир и вещи остаются, тело подлечено
@@ -5850,8 +6523,9 @@ const Game = {
     Player.x = (bx + bed.w / 2) * CELL;
     Player.y = (by - 1) * CELL;
     Player.vx = 0; Player.vy = 0; Player.fallStart = null;
-    Player.hp = 45; Player.food = Math.max(Player.food, 110); Player.water = Math.max(Player.water, 110);
-    Player.rad = 0;
+    Player.hp = 40; Player.food = Math.max(Player.food, 90); Player.water = Math.max(Player.water, 90);
+    Player.rad = 0; Player.stam = STAM_MAX * 0.5; Player.warm = WARM_MAX * 0.7;
+    // заражение возрождение не лечит — с ним придётся разбираться отдельно
     for (const l of LIMBS) { const b = Player.body[l.id]; b.w = Math.min(b.w, 1); b.bleed = false; }
     Zombies.list.length = 0;
     this.time = DAY_LEN * 0.3; this.day++;
@@ -5944,7 +6618,7 @@ const Game = {
     if (!Player.dead && (Input.once('Period') || Input.once('KeyG'))) Player.dropHand();
     for (let i = 0; i < 6; i++) if (Input.once('Digit' + (i + 1))) Player.hotbar = i;
     // приближение и отдаление: колесо мыши или щипок на трекпаде
-    if (Input.zoomDelta) {
+    if (Input.zoomDelta && UI.screen === null) {
       this.zoomTarget = clamp((this.zoomTarget || this.zoom) * (1 + Input.zoomDelta), 0.55, 4.2);
       this.zoomHint = 1.6;
     }
@@ -5964,6 +6638,13 @@ const Game = {
       if (this.time > DAY_LEN) { this.time -= DAY_LEN; this.day++; }
       if (!this.introDone) this.introT += dt;
 
+      Weather.update(dt);
+      // объявление орды один раз за сутки, на закате
+      if (Zombies.hordeNight() && this.nightAmount() > 0.3 && this.hordeWarned !== this.day) {
+        this.hordeWarned = this.day;
+        Player.say('Слышишь? Их много. Сегодня орда — запирайся');
+        Floaters.push(Player.x, Player.y - 76, 'ОРДА', '#e0603c');
+      }
       Player.update(dt);
       Zombies.update(dt);
       Bullets.update(dt);
@@ -5994,7 +6675,10 @@ const Game = {
       } else if (c) {
         this.hint = c.kind === 'trader' ? 'E — торговать: ' + c.trader.def.name : 'E — доска заданий';
         if (Input.once('KeyE')) {
-          if (c.kind === 'trader') { UI.shopTrader = c.trader.def; Player.say(c.trader.def.greet); UI.screen = 'shop'; }
+          if (c.kind === 'trader') {
+            UI.shopTrader = c.trader.def; UI.shopTab = 'buy'; UI.shopScroll = 0;
+            Player.say(c.trader.def.greet); UI.screen = 'shop';
+          }
           else UI.screen = 'board';
         }
       } else if (d) {
@@ -6193,7 +6877,7 @@ const Game = {
     l.globalCompositeOperation = 'source-over';
 
     // базовая тьма ночи
-    const nAlpha = night * 0.6;   // ночью темно, но силуэты читаются — лунный свет
+    const nAlpha = clamp(night * 0.66 + Weather.darkness() * 0.5, 0, 0.9);   // погода темнит дополнительно
     if (nAlpha > 0.01) { l.fillStyle = 'rgba(8,11,22,' + nAlpha + ')'; l.fillRect(0, 0, UI.W, UI.H); }
 
     // подземная тьма: три слоя, повторяющие рельеф — без вертикальных швов
@@ -6290,6 +6974,7 @@ const Game = {
       drawHuman(g, Player.x, Player.y, Player.look, {
         face: Player.face, phase: Player.phase, moving: Math.abs(Player.vx) > 0.1,
         air: !Player.onGround, mask: Player.mask,
+        coat: Player.worn.coat, hood: Player.worn.hood,
         dig: Player.digAnim,
         item: it ? (it.type === 'tool' ? (it.wood ? 'axe' : 'pick') : it.type === 'melee' ? 'club' : null) : null,
         aim: it && it.type === 'gun' ? it.kind : null,
@@ -6315,7 +7000,24 @@ const Game = {
     g.restore();
 
     this.drawLight(g);
+    Weather.draw(g);
     this.drawGrade(g);
+    // холод: иней по краям кадра и лёгкое посинение
+    if (Player.warm < 40 && !Player.dead) {
+      const c = (40 - Player.warm) / 40;
+      const fg = g.createRadialGradient(UI.W / 2, UI.H / 2, UI.H * 0.3, UI.W / 2, UI.H / 2, UI.H * 0.95);
+      fg.addColorStop(0, 'rgba(120,170,220,0)');
+      fg.addColorStop(1, 'rgba(150,195,235,' + (c * 0.3) + ')');
+      g.fillStyle = fg; g.fillRect(0, 0, UI.W, UI.H);
+    }
+    // заражение: мутный зелёный пульс по краям
+    if (Player.infection > 25 && !Player.dead) {
+      const c = clamp((Player.infection - 25) / 75, 0, 1);
+      const ig = g.createRadialGradient(UI.W / 2, UI.H / 2, UI.H * 0.35, UI.W / 2, UI.H / 2, UI.H);
+      ig.addColorStop(0, 'rgba(70,110,60,0)');
+      ig.addColorStop(1, 'rgba(84,124,64,' + (c * (0.26 + Math.sin(performance.now() / 700) * 0.06)) + ')');
+      g.fillStyle = ig; g.fillRect(0, 0, UI.W, UI.H);
+    }
 
     // прицел
     if (!Player.dead && UI.screen === null) {
@@ -6342,6 +7044,15 @@ const Game = {
       g.beginPath(); g.ellipse(UI.W / 2, UI.H / 2, UI.W * 0.505, UI.H * 0.55, 0, 0, 7); g.stroke();
       g.fillStyle = 'rgba(130,160,140,0.028)'; g.fillRect(0, 0, UI.W, UI.H);
     }
+    // плёночное зерно: чуть-чуть, только чтобы убрать пластиковую гладкость
+    g.save();
+    g.globalAlpha = 0.045;
+    for (let i = 0; i < 130; i++) {
+      g.fillStyle = Math.random() < 0.5 ? '#fff' : '#000';
+      g.fillRect(Math.random() * UI.W, Math.random() * UI.H, 1.6, 1.6);
+    }
+    g.restore();
+
     // красный пульс при низком здоровье
     if (Player.hp < 35 && !Player.dead) {
       g.fillStyle = 'rgba(140,20,16,' + (0.10 + Math.sin(performance.now() / 220) * 0.05) * (1 - Player.hp / 35) + ')';

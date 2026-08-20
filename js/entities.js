@@ -190,16 +190,28 @@ const Zombies = {
     }
   },
   spawnTimer: 4,
+  // Орда: каждую третью ночь мёртвые идут стеной. Днём висит предупреждение,
+  // с каждым разом волна гуще и злее
+  hordeNight() { return Game.day % 3 === 0; },
+  hordeActive() { return this.hordeNight() && Game.nightAmount() > 0.55; },
+  // Общий множитель силы заражённых: растёт с прожитыми днями и в бурю
+  power() {
+    return (1 + (Game.day - 1) * 0.11) * (Weather.cur.id === 'storm' ? 1.15 : 1);
+  },
   update(dt) {
     this.updateNests();
     // ночью лезут, днём почти нет; в мёртвой зоне лезут всегда, в городе никогда
     const night = Game.nightAmount();
     const zm = zoneAtPx(Player.x).zombies;
-    this.spawnTimer -= dt * (0.3 + night * 2.4) * zm;
-    const cap = Math.round((3 + night * 7) * zm);
+    const horde = this.hordeActive() ? 3.2 : 1;
+    const wx = Weather.cur.zomb;
+    // с каждым днём мир населённее
+    const byDay = 1 + (Game.day - 1) * 0.07;
+    this.spawnTimer -= dt * (0.3 + night * 2.4) * zm * horde * wx;
+    const cap = Math.round((3 + night * 7) * zm * horde * byDay);
     if (zm <= 0) { this.list.length = 0; }
     else if (this.spawnTimer <= 0 && this.list.length < cap) {
-      this.spawnTimer = rnd(2.5, 7) / Math.max(0.4, zm);
+      this.spawnTimer = rnd(2.5, 7) / Math.max(0.4, zm * horde * wx);
       this.spawn();
     }
     for (let i = this.list.length - 1; i >= 0; i--) {
@@ -239,7 +251,11 @@ const Zombies = {
       if (far && !z.nest) { this.list.splice(i, 1); continue; }
       z.face = dx > 0 ? 1 : -1;
       const t = z.type || ZTYPES[0];
-      const see = Math.abs(dx) < (t.gun ? 620 : 320) && !Player.dead;
+      // Ночью они видят дальше, а на запах крови идут почти через полэкрана
+      let bleeding = 0;
+      for (const l of LIMBS) if (Player.body[l.id].bleed) bleeding++;
+      const sense = (t.gun ? 620 : 320) * (1 + Game.nightAmount() * 0.5) + bleeding * 90;
+      const see = Math.abs(dx) < sense && !Player.dead;
       let spd = see ? z.speed : z.speed * 0.35;
       // вооружённые не лезут в упор: подходят на дистанцию выстрела и стреляют
       if (t.gun && see && Math.abs(dx) < 210) spd = -z.speed * 0.5;
@@ -292,10 +308,18 @@ const Zombies = {
       // атака
       z.cd = Math.max(0, (z.cd || 0) - dt);
       if (!Player.dead && Math.abs(Player.x - z.x) < 16 && Math.abs(Player.y - z.y) < 40 && z.cd <= 0) {
-        z.cd = 1.15;
+        z.cd = 1.0;
         Player.hp -= z.dmg;
+        Player.stam = Math.max(0, Player.stam - 12);        // удар сбивает дыхание
         const limb = pick(['armL', 'armR', 'legL', 'legR', 'torso', 'head']);
-        if (Math.random() < 0.55) Player.wound(limb, Math.random() < 0.22 ? 2 : 1);
+        if (Math.random() < 0.7) Player.wound(limb, Math.random() < 0.32 ? 2 : 1);
+        // укус заражает. Броня и куртка немного прикрывают
+        const guard = Player.worn.coat ? 0.6 : 1;
+        if (!t.gun && Math.random() < 0.3 * guard) {
+          const was = Player.infection;
+          Player.infection = clamp(Player.infection + rnd(8, 18), 0, 100);
+          if (was === 0) { Player.say('Укус загноился — нужен антибиотик'); Floaters.push(Player.x, Player.y - 64, 'ЗАРАЖЕНИЕ', '#8fc060'); }
+        }
         for (let k = 0; k < 8; k++) Particles.blood(Player.x, Player.y - 30);
         Game.shake = 5;
       }
@@ -312,18 +336,20 @@ const Zombies = {
   pickTier() {
     const z = zoneAtPx(Player.x);
     const danger = z.zombies || 1;
-    const byDay = Math.min(6, (Game.day - 1) * 0.6);
-    const base = danger * 2.2 + byDay;
+    const byDay = Math.min(9, (Game.day - 1) * 0.85);
+    const horde = this.hordeActive() ? 3 : 0;
+    const base = danger * 2.4 + byDay + horde;
     const spread = 2 + danger;
-    return clamp(Math.round(base + rnd(-spread, spread)), 0, ZTYPES.length - 4);
+    return clamp(Math.round(base + rnd(-spread, spread)), 0, ZTYPES.length - 2);
   },
 
   make(x, y, tierIdx, face) {
     const t = ztype(tierIdx);
+    const pw = this.power();
     const z = {
       type: t, x, y, vx: 0, vy: 0,
-      hp: t.hp * rnd(0.9, 1.15), maxHp: t.hp,
-      dmg: t.dmg, speed: t.spd * rnd(0.92, 1.08),
+      hp: t.hp * rnd(0.9, 1.15) * pw, maxHp: t.hp,
+      dmg: t.dmg * pw, speed: t.spd * rnd(0.92, 1.08) * Math.min(1.35, 1 + (Game.day - 1) * 0.015),
       face: face || (Math.random() < 0.5 ? -1 : 1),
       phase: Math.random() * 6, onGround: false,
       wander: Math.random() < 0.5 ? -1 : 1,
@@ -585,37 +611,94 @@ const TRADERS = [
   {
     id: 'quartermaster', name: 'Завхоз', zone: 'city', at: 0.5, coat: '#6b5a3c', hat: '#4a3f2a',
     greet: 'Бери что надо, только не задерживай очередь.',
-    stock: [['plank', 5, 6], ['stone', 10, 8], ['wood', 20, 10], ['coal', 5, 3],
-            ['iron', 5, 8], ['copper', 5, 7], ['scrap', 5, 6], ['ladder', 4, 5]]
+    // стройка и сырьё. Оружия нет вовсе — за ним к оружейнику
+    stock: [['plank', 5, 7, 20], ['stone', 10, 9, 20], ['wood', 20, 12, 16], ['coal', 5, 4, 24],
+            ['iron', 5, 11, 12], ['copper', 5, 9, 12], ['scrap', 5, 8, 16], ['ladder', 4, 6, 12],
+            ['clay', 10, 7, 12], ['lowgrade', 5, 14, 8], ['home_flag', 1, 40, 1], ['hammer', 1, 45, 1]],
+    buys: { wood: 1, stone: 1, plank: 1, coal: 1, iron: 1, copper: 1, scrap: 1, clay: 1, hqm: 1.4, dirt: 0.6 }
   },
   {
     id: 'medic', name: 'Фельдшер', zone: 'city', at: 0.28, coat: '#b9b3a2', hat: '#8f8b7c',
     greet: 'Раны показывай сразу, не жди, пока почернеют.',
-    stock: [['bandage', 2, 9], ['splint', 1, 12], ['medkit', 1, 26], ['antirad', 1, 10],
-            ['filter', 1, 14], ['can', 2, 12], ['canteen_clean', 2, 8], ['seeds', 2, 6]]
+    // единственный, у кого есть антибиотик — без него укус тебя доест
+    stock: [['bandage', 2, 11, 16], ['splint', 1, 15, 8], ['medkit', 1, 34, 4], ['antirad', 1, 13, 8],
+            ['antibiotic', 1, 46, 3], ['filter', 1, 18, 6], ['canteen_clean', 2, 10, 10],
+            ['seeds', 2, 8, 8], ['tea', 1, 14, 6], ['stew', 1, 22, 4]],
+    buys: { rag: 1.2, potato: 1, potato_baked: 1.2, seeds: 1, meat_rot: 0.4, can: 1 }
   },
   {
     id: 'gunsmith', name: 'Оружейник', zone: 'city', at: 0.72, coat: '#4a4e52', hat: '#33373b',
     greet: 'Патроны есть. Стрелять научишься сам.',
-    stock: [['ammo9', 20, 12], ['ammo545', 20, 16], ['ammo762', 20, 20], ['buckshot', 10, 14],
-            ['zinc9', 1, 90], ['pistol', 1, 120], ['sawnoff', 1, 140], ['shotgun', 1, 210],
-            ['grenade', 1, 60]]
+    // стволы, патроны и масло. Ничего съедобного и ничего строительного
+    stock: [['ammo9', 20, 15, 12], ['ammo545', 20, 20, 10], ['ammo762', 20, 26, 8], ['buckshot', 10, 17, 12],
+            ['gunoil', 1, 20, 6], ['zinc9', 1, 110, 2], ['zinc545', 1, 150, 1],
+            ['pistol', 1, 150, 1], ['sawnoff', 1, 175, 1], ['shotgun', 1, 260, 1],
+            ['revolver', 1, 230, 1], ['smg', 1, 420, 1], ['grenade', 1, 75, 3]],
+    buys: { gunpowder: 1.2, sulfur: 1.2, iron: 0.8, scrap: 0.8, ammo9: 0.9, ammo545: 0.9, ammo762: 0.9,
+            buckshot: 0.9, pistol: 1, revolver: 1, shotgun: 1, sawnoff: 1, smg: 1, rifle: 1, sniper: 1, mg: 1 }
   },
   {
     id: 'prospector', name: 'Старатель', zone: 'mine', at: 0.5, coat: '#7a5a34', hat: '#5c4426',
     greet: 'Наверху за это дадут вдвое. Но наверх ещё дойти надо.',
-    stock: [['pick', 1, 90], ['torch', 6, 8], ['coal', 10, 5], ['iron', 10, 14],
-            ['drill', 1, 260], ['fuel', 5, 18], ['canteen_clean', 1, 5]]
+    // инструмент, свет и топливо. Цены выше городских — он тут один
+    stock: [['pick', 1, 110, 1], ['pick_wood', 1, 24, 3], ['torch', 6, 10, 12], ['coal', 10, 7, 16],
+            ['iron', 10, 18, 8], ['drill', 1, 320, 1], ['fuel', 5, 22, 8],
+            ['canteen_clean', 1, 8, 8], ['workbench', 1, 60, 2], ['furnace', 1, 90, 1]],
+    buys: { iron_ore: 1.2, copper_ore: 1.2, hqm_ore: 2, sulfur_ore: 1.2, stone: 0.8, coal: 1 }
   },
   {
     id: 'scav', name: 'Барахольщик', zone: 'waste', at: 0.78, coat: '#5e5344', hat: '#453c30',
     greet: 'Хлам? Это не хлам. Это запчасти.',
-    stock: [['scrap', 10, 9], ['rag', 6, 4], ['plank', 6, 7], ['bandage', 1, 7],
-            ['can', 1, 9], ['gasmask', 1, 140], ['filter', 2, 26]]
+    // тряпьё, одежда и всё, что нашёл. Скупает вообще всё, но за копейки
+    stock: [['scrap', 10, 11, 14], ['rag', 6, 5, 16], ['plank', 6, 8, 12], ['bandage', 1, 9, 8],
+            ['can', 1, 12, 8], ['coat', 1, 95, 1], ['hood', 1, 70, 1],
+            ['gasmask', 1, 170, 1], ['filter', 2, 32, 4], ['campfire', 1, 30, 2]],
+    buys: { rag: 1, scrap: 0.9, wood: 0.7, plank: 0.7, meat_rot: 0.5, bandage: 0.8, stick: 0.5, can: 1 }
   }
 ];
 // общий прайс на случай, если торговец не найден
 const SHOP = TRADERS[0].stock;
+
+// Склад торговца: у каждого свой запас, который кончается и приходит обратно
+// только с новым днём. Скупает он тоже не всё — только то, что по профилю
+const Shop = {
+  left: {}, day: 0,
+  key(def, id) { return def.id + ':' + id; },
+  restock() {
+    this.left = {};
+    for (const d of TRADERS) for (const [id, , , lim] of d.stock) this.left[this.key(d, id)] = lim || 1;
+    this.day = Game.day;
+  },
+  ensure() { if (this.day !== Game.day) this.restock(); },
+  stockLeft(def, id) { this.ensure(); const v = this.left[this.key(def, id)]; return v === undefined ? 0 : v; },
+  takeOne(def, id) { this.ensure(); this.left[this.key(def, id)] = Math.max(0, this.stockLeft(def, id) - 1); },
+  // Цена скупки. Торговец берёт только своё и платит втрое меньше, чем сам
+  // просит: наживаться на перепродаже не выйдет
+  sellPrice(def, id) {
+    const mul = def.buys && def.buys[id];
+    if (!mul) return 0;
+    return Math.max(1, Math.round(unitPrice(id) * 0.34 * mul));
+  }
+};
+
+// Прейскурант мира: за основу берём цены самих торговцев, а на то, чем никто
+// не торгует (руда, порох, оружие с боя), даём отдельную вилку
+const EXTRA_PRICE = {
+  iron_ore: 5, copper_ore: 4, hqm_ore: 14, sulfur_ore: 5, sulfur: 9, gunpowder: 7,
+  charcoal: 2, hqm: 26, dirt: 1, stick: 1, potato: 4, potato_baked: 7, meat_rot: 2,
+  rifle: 380, sniper: 520, mg: 700, smg: 300
+};
+let PRICE_INDEX = null;
+function unitPrice(id) {
+  if (!PRICE_INDEX) {
+    PRICE_INDEX = {};
+    for (const d of TRADERS) for (const [i, n, p] of d.stock) {
+      const u = p / Math.max(1, n);
+      if (PRICE_INDEX[i] === undefined || u < PRICE_INDEX[i]) PRICE_INDEX[i] = u;
+    }
+  }
+  return PRICE_INDEX[id] !== undefined ? PRICE_INDEX[id] : (EXTRA_PRICE[id] || 2);
+}
 
 const Missions = {
   list: [
