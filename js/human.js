@@ -18,6 +18,31 @@ function limb(ctx, x, y, len, ang, w, col) {
   return [ex, ey];
 }
 
+// Рука: плечо в рукаве, предплечье голое, кисть отдельным пятном.
+// Без этого рука была одной плоской колбасой поверх туловища
+function arm(ctx, x, y, len1, len2, ang, skin, w, sleeve, back) {
+  const sh = back ? 0.68 : 1;
+  const upper = sleeve ? sleeve : shade(skin, sh);
+  const [ex, ey] = limb(ctx, x, y, len1, ang, w, upper);
+  if (sleeve) {
+    // манжет рукава
+    ctx.fillStyle = shade(sleeve, 0.8);
+    ctx.beginPath(); ctx.arc(ex, ey, w * 0.5, 0, 7); ctx.fill();
+  }
+  const [hx, hy] = limb(ctx, ex, ey, len2, ang + 0.25, w * 0.88, shade(skin, sh * 0.9));
+  // кисть
+  ctx.fillStyle = shade(skin, sh * 0.82);
+  ctx.beginPath(); ctx.arc(hx, hy, w * 0.46, 0, 7); ctx.fill();
+  // блик по внешней стороне предплечья
+  if (!back) {
+    ctx.strokeStyle = 'rgba(255,238,214,0.16)'; ctx.lineWidth = w * 0.28; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(ex + Math.sin(ang + 0.25) * 1.5 + 1, ey + Math.cos(ang + 0.25) * 1.5);
+    ctx.lineTo(hx + 1, hy - 1.5); ctx.stroke();
+  }
+  return [hx, hy];
+}
+
 // a — облик: {skin, hair, hairStyle, beard}
 // s — состояние: {face:1|-1, phase, moving, air, dig, aim, mask, item, hurtLeg}
 function drawHuman(ctx, px, py, a, s) {
@@ -65,41 +90,113 @@ function drawHuman(ctx, px, py, a, s) {
   // ---- дальняя рука ----
   const armL = 10, foreL = 10;
   const hasGun = !!s.aim;
+  const sleeveCol = s.coat ? '#4c432c' : s.hood ? '#3c584f' : null;
   if (!hasGun) {
     const ah = walk ? -Math.sin(t) * 0.5 : -0.12;
-    const [ex, ey] = limb(ctx, -1, shoulderY + 2, armL, ah, 6.4, shade(skin, 0.7));
-    limb(ctx, ex, ey, foreL, ah - 0.2, 5.6, shade(skin, 0.66));
+    arm(ctx, -1, shoulderY + 2, armL, foreL, ah, skin, 6.2, sleeveCol && shade(sleeveCol, 0.8), true);
   }
 
   // ---- торс ----
   ctx.save();
   ctx.rotate(lean * 0.5);
-  const grd = ctx.createLinearGradient(-6, shoulderY, 7, hipY);
-  grd.addColorStop(0, shirt); grd.addColorStop(1, shirtDark);
+  // силуэт майки: слева тень, по центру свет, справа контровой блик
+  const body = new Path2D();
+  body.moveTo(-6.5, shoulderY + 1);
+  body.quadraticCurveTo(-7.5, hipY - 8, -5.2, hipY + 1);
+  body.lineTo(5.4, hipY + 1);
+  body.quadraticCurveTo(7.6, hipY - 9, 6.6, shoulderY + 1);
+  body.quadraticCurveTo(0, shoulderY - 2.4, -6.5, shoulderY + 1);
+  const grd = ctx.createLinearGradient(-7, 0, 7, 0);
+  grd.addColorStop(0, shade(shirtDark, 0.86));
+  grd.addColorStop(0.42, shirt);
+  grd.addColorStop(1, shirtDark);
   ctx.fillStyle = grd;
+  ctx.fill(body);
+  // ткань живёт: складки под грудью и у пояса
+  ctx.save();
+  ctx.clip(body);
+  ctx.strokeStyle = 'rgba(120,114,96,0.30)'; ctx.lineWidth = 0.8; ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.moveTo(-6.5, shoulderY + 1);
-  ctx.quadraticCurveTo(-7.5, hipY - 8, -5.2, hipY + 1);
-  ctx.lineTo(5.4, hipY + 1);
-  ctx.quadraticCurveTo(7.6, hipY - 9, 6.6, shoulderY + 1);
-  ctx.quadraticCurveTo(0, shoulderY - 2.4, -6.5, shoulderY + 1);
-  ctx.fill();
-  // бретельки майки и грязь
-  ctx.fillStyle = 'rgba(120,112,92,0.35)';
-  ctx.fillRect(-5.6, hipY - 5, 11.4, 2.2);
-  ctx.fillStyle = 'rgba(90,80,62,0.22)';
-  ctx.fillRect(-4.2, hipY - 11, 4, 4);
-  ctx.fillStyle = 'rgba(255,255,255,0.25)';
-  ctx.fillRect(-2.4, shoulderY + 2, 4.6, 6);
-  // ремень
-  ctx.fillStyle = '#31261d';
-  ctx.fillRect(-6, hipY - 1.5, 12, 3.4);
-  ctx.fillStyle = '#8b7a52';
-  ctx.fillRect(0.4, hipY - 1, 2.4, 2.6);
-  // шея
-  ctx.fillStyle = shade(skin, 0.85);
-  ctx.fillRect(-2.2, shoulderY - 4, 4.6, 6);
+  ctx.moveTo(-5, hipY - 12); ctx.quadraticCurveTo(-1.5, hipY - 10, 2.6, hipY - 13);
+  ctx.moveTo(-4.4, hipY - 5.5); ctx.quadraticCurveTo(0, hipY - 3.6, 4.6, hipY - 6);
+  ctx.moveTo(-2, shoulderY + 8); ctx.quadraticCurveTo(1, shoulderY + 10, 4, shoulderY + 7.4);
+  ctx.stroke();
+  // въевшаяся грязь и старое пятно крови
+  ctx.fillStyle = 'rgba(92,82,64,0.26)';
+  ctx.beginPath(); ctx.ellipse(-3.4, hipY - 9, 3, 2.4, 0.4, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(106,48,40,0.20)';
+  ctx.beginPath(); ctx.ellipse(3.2, hipY - 14, 2, 2.8, -0.3, 0, 7); ctx.fill();
+  // контровой свет по правому краю — то, что отделяет фигуру от фона
+  ctx.fillStyle = 'rgba(255,246,222,0.22)';
+  ctx.fillRect(4.8, shoulderY, 2.4, 22);
   ctx.restore();
+  // бретельки майки
+  ctx.fillStyle = 'rgba(255,255,255,0.20)';
+  ctx.beginPath(); ctx.moveTo(-4.4, shoulderY + 1); ctx.lineTo(-2.6, shoulderY + 1);
+  ctx.lineTo(-1.4, shoulderY + 9); ctx.lineTo(-3, shoulderY + 9); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(2.8, shoulderY + 0.4); ctx.lineTo(4.6, shoulderY + 0.6);
+  ctx.lineTo(4.2, shoulderY + 8.6); ctx.lineTo(2.6, shoulderY + 8.4); ctx.fill();
+  // ремень с бляхой
+  ctx.fillStyle = '#31261d';
+  ctx.beginPath(); ctx.roundRect(-6, hipY - 1.8, 12, 3.6, 0.8); ctx.fill();
+  ctx.fillStyle = 'rgba(255,240,210,0.12)'; ctx.fillRect(-6, hipY - 1.8, 12, 0.8);
+  ctx.fillStyle = '#a08f5e';
+  ctx.beginPath(); ctx.roundRect(0.4, hipY - 1.4, 2.8, 3, 0.6); ctx.fill();
+  ctx.fillStyle = '#6b5c34'; ctx.fillRect(1.4, hipY - 0.6, 0.8, 1.4);
+  // шея с тенью от челюсти
+  ctx.fillStyle = shade(skin, 0.82);
+  ctx.beginPath(); ctx.roundRect(-2.3, shoulderY - 4.4, 4.8, 6.4, 1.2); ctx.fill();
+  ctx.fillStyle = 'rgba(30,22,16,0.28)';
+  ctx.fillRect(-2.3, shoulderY - 4.4, 4.8, 2);
+  ctx.restore();
+
+  // ---- надетая одежда ----
+  if (s.coat) {
+    ctx.save(); ctx.rotate(lean * 0.5);
+    const cg = ctx.createLinearGradient(-8, 0, 8, 0);
+    cg.addColorStop(0, '#443c28'); cg.addColorStop(0.45, '#5c5238'); cg.addColorStop(1, '#3d3624');
+    ctx.fillStyle = cg;
+    ctx.beginPath();
+    ctx.moveTo(-7.4, shoulderY);
+    ctx.quadraticCurveTo(-9, hipY - 6, -7, hipY + 5);
+    ctx.lineTo(7, hipY + 5);
+    ctx.quadraticCurveTo(9, hipY - 7, 7.4, shoulderY);
+    ctx.quadraticCurveTo(0, shoulderY - 3.4, -7.4, shoulderY);
+    ctx.fill();
+    // воротник, борт и пуговицы
+    ctx.fillStyle = '#6e6244';
+    ctx.beginPath(); ctx.moveTo(-6.4, shoulderY - 0.6); ctx.lineTo(0, shoulderY + 5);
+    ctx.lineTo(6.4, shoulderY - 0.6); ctx.lineTo(6.4, shoulderY + 2.6);
+    ctx.lineTo(0, shoulderY + 8); ctx.lineTo(-6.4, shoulderY + 2.6); ctx.fill();
+    ctx.fillStyle = 'rgba(24,20,14,0.5)'; ctx.fillRect(0.6, shoulderY + 6, 1.2, 20);
+    ctx.fillStyle = '#a08f5e';
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(2.4, shoulderY + 10 + i * 5.4, 0.8, 0, 7); ctx.fill(); }
+    ctx.fillStyle = 'rgba(255,246,222,0.16)'; ctx.fillRect(5.6, shoulderY + 2, 2, 20);
+    ctx.restore();
+  }
+  if (s.hood) {
+    // плащ: накидка от плеч до колен и складки от ветра
+    ctx.save(); ctx.rotate(lean * 0.5);
+    const rg = ctx.createLinearGradient(-9, 0, 9, 0);
+    rg.addColorStop(0, 'rgba(48,70,64,0.85)');
+    rg.addColorStop(0.45, 'rgba(71,102,92,0.85)');
+    rg.addColorStop(1, 'rgba(44,64,58,0.85)');
+    ctx.fillStyle = rg;
+    ctx.beginPath();
+    ctx.moveTo(-7.4, shoulderY - 1);
+    ctx.quadraticCurveTo(-10, hipY - 2, -8.4, hipY + 7);
+    ctx.quadraticCurveTo(0, hipY + 9.5, 8.4, hipY + 7);
+    ctx.quadraticCurveTo(10, hipY - 3, 7.4, shoulderY - 1);
+    ctx.quadraticCurveTo(0, shoulderY - 4, -7.4, shoulderY - 1);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(28,42,38,0.35)'; ctx.lineWidth = 0.7;
+    for (const fx of [-4, 0, 4]) {
+      ctx.beginPath(); ctx.moveTo(fx * 0.7, shoulderY + 4);
+      ctx.quadraticCurveTo(fx, hipY - 4, fx * 1.15, hipY + 7); ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(5.6, shoulderY + 2, 2, 26);
+    ctx.restore();
+  }
 
   // ---- голова ----
   ctx.save();
@@ -131,13 +228,53 @@ function drawHuman(ctx, px, py, a, s) {
     ctx.strokeStyle = '#33372f'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(-4.6, -3.4); ctx.lineTo(-7, -2.2); ctx.moveTo(-4.6, 2.4); ctx.lineTo(-7, 2); ctx.stroke();
   } else {
-    ctx.fillStyle = skin;
-    ctx.beginPath(); ctx.ellipse(0, 0, 5.4, 6.2, 0, 0, 7); ctx.fill();
-    // нос, глаз
-    ctx.fillStyle = shade(skin, 0.86);
-    ctx.beginPath(); ctx.moveTo(4.6, -0.6); ctx.lineTo(6.4, 0.8); ctx.lineTo(4.4, 1.2); ctx.fill();
-    ctx.fillStyle = '#1d1a18';
-    ctx.fillRect(2.4, -1.8, 1.5, 1.5);
+    // Голова в профиль: череп, челюсть, скула, ухо, нос и один видимый глаз —
+    // так и должно быть при виде сбоку. Объём даёт градиент, а не второй глаз
+    const hg = ctx.createLinearGradient(-5.4, 0, 5.4, 0);
+    hg.addColorStop(0, shade(skin, 0.74));
+    hg.addColorStop(0.45, skin);
+    hg.addColorStop(1, shade(skin, 0.9));
+    // силуэт головы держим отдельным путём: по нему же обрезаем бороду,
+    // чтобы щетина не вылезала за челюсть и не читалась как открытый рот
+    const headPath = new Path2D();
+    headPath.moveTo(-4.6, -3.6);
+    headPath.quadraticCurveTo(-0.4, -7.4, 4.2, -3.4);      // темя и лоб
+    headPath.quadraticCurveTo(5.2, -1.8, 4.7, -0.8);       // переносица
+    headPath.lineTo(5.9, 0.7);                             // нос — короткий, не клюв
+    headPath.lineTo(4.4, 1.3);
+    headPath.quadraticCurveTo(4.9, 3.2, 3.4, 4.6);         // губа и подбородок
+    headPath.quadraticCurveTo(1.2, 6.4, -1.6, 5.4);        // челюсть
+    headPath.quadraticCurveTo(-5, 3.6, -4.6, -3.6);
+    ctx.fillStyle = hg;
+    ctx.fill(headPath);
+    // скула и тень под челюстью
+    ctx.fillStyle = 'rgba(120,78,50,0.12)';
+    ctx.beginPath(); ctx.ellipse(2, 1.6, 1.8, 1.1, -0.25, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-0.4, 4.4, 2.6, 1, 0.1, 0, 7); ctx.fill();
+    // ухо
+    ctx.fillStyle = shade(skin, 0.88);
+    ctx.beginPath(); ctx.ellipse(-2.2, 0.6, 1.5, 2, -0.2, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(110,70,46,0.5)'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.arc(-2.2, 0.6, 0.9, -1.2, 1.6); ctx.stroke();
+    // глаз: веко, белок, зрачок и блик
+    ctx.fillStyle = 'rgba(232,226,212,0.92)';
+    ctx.beginPath(); ctx.ellipse(3.1, -1.5, 1.15, 0.82, -0.08, 0, 7); ctx.fill();
+    ctx.fillStyle = '#3a312b';
+    ctx.beginPath(); ctx.arc(3.5, -1.45, 0.66, 0, 7); ctx.fill();
+    ctx.fillStyle = '#141110';
+    ctx.beginPath(); ctx.arc(3.6, -1.45, 0.32, 0, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath(); ctx.arc(3.3, -1.8, 0.22, 0, 7); ctx.fill();
+    // верхнее веко и бровь — без них лицо выглядит пустым
+    ctx.strokeStyle = shade(skin, 0.62); ctx.lineWidth = 0.7; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(1.5, -2.2); ctx.quadraticCurveTo(3.1, -3, 4.4, -1.9); ctx.stroke();
+    ctx.strokeStyle = shade(hair, 0.9); ctx.lineWidth = 1.1;
+    ctx.beginPath(); ctx.moveTo(1.2, -3.4); ctx.quadraticCurveTo(3, -4.3, 4.6, -3.2); ctx.stroke();
+    // ноздря и линия рта
+    ctx.fillStyle = 'rgba(60,36,26,0.5)';
+    ctx.beginPath(); ctx.ellipse(5.1, 1, 0.45, 0.3, 0.3, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(90,52,42,0.55)'; ctx.lineWidth = 0.7;
+    ctx.beginPath(); ctx.moveTo(3.1, 3); ctx.quadraticCurveTo(4.2, 3.2, 4.7, 2.7); ctx.stroke();
     // волосы
     ctx.fillStyle = hair;
     const st = a.hairStyle % HAIRSTYLES.length;
@@ -146,12 +283,46 @@ function drawHuman(ctx, px, py, a, s) {
     else if (st === 2) { ctx.beginPath(); ctx.moveTo(-5.6, -3.2); ctx.quadraticCurveTo(0, -9, 5.4, -3.6); ctx.quadraticCurveTo(1, -5.4, -5.6, -3.2); ctx.fill(); }
     else if (st === 3) { ctx.beginPath(); ctx.ellipse(-2.8, -3.4, 3, 2.4, 0, Math.PI, 0); ctx.fill(); }
     else { for (let i = 0; i < 9; i++) { const an = Math.PI + i * 0.4; ctx.beginPath(); ctx.ellipse(Math.cos(an) * 4.4, -3 + Math.sin(an) * 3.4, 2.2, 2, 0, 0, 7); ctx.fill(); } }
+    // блик на волосах — они перестают быть плоским пятном
+    ctx.fillStyle = 'rgba(255,244,220,0.14)';
+    ctx.beginPath(); ctx.ellipse(0.6, -4.6, 3, 1, -0.2, 0, 7); ctx.fill();
     if (a.beard) {
-      ctx.fillStyle = shade(hair, 0.85);
-      ctx.beginPath(); ctx.ellipse(1.4, 3.2, 4, 3, 0, 0, Math.PI); ctx.fill();
+      // Щетина: заливаем низ лица и обрезаем силуэтом головы. Так борода
+      // всегда сидит по челюсти и не превращается в ухмылку
+      ctx.save();
+      ctx.clip(headPath);
+      ctx.fillStyle = shade(hair, 0.92);
+      ctx.beginPath();
+      ctx.moveTo(-5, 0.4);
+      ctx.quadraticCurveTo(-1, 2.6, 2.6, 1.6);
+      ctx.quadraticCurveTo(4.2, 1.2, 5, 2);
+      ctx.lineTo(5, 7); ctx.lineTo(-5, 7);
+      ctx.fill();
+      // губа поверх бороды, чтобы рот читался
+      ctx.strokeStyle = 'rgba(40,26,20,0.5)'; ctx.lineWidth = 0.6;
+      ctx.beginPath(); ctx.moveTo(3.2, 2.9); ctx.quadraticCurveTo(4.1, 3.1, 4.6, 2.7); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,246,226,0.10)';
+      ctx.beginPath(); ctx.ellipse(0.6, 4.2, 2.4, 0.9, 0.05, 0, 7); ctx.fill();
+      ctx.restore();
     }
   }
   ctx.restore();
+
+  // капюшон надевается поверх головы, но лицо остаётся видно
+  if (s.hood) {
+    ctx.save(); ctx.translate(0, headY); ctx.rotate(lean * 0.3);
+    ctx.fillStyle = 'rgba(60,88,80,0.92)';
+    ctx.beginPath();
+    ctx.moveTo(-5.4, 4);
+    ctx.quadraticCurveTo(-7.4, -6.4, 0, -8.4);
+    ctx.quadraticCurveTo(4.6, -8.2, 5.2, -4.6);
+    ctx.quadraticCurveTo(3.4, -5.6, 1.6, -4.4);
+    ctx.quadraticCurveTo(-2.6, -3.2, -2.8, 4.2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    ctx.beginPath(); ctx.ellipse(-0.6, -6, 3, 1.1, -0.15, 0, 7); ctx.fill();
+    ctx.restore();
+  }
 
   // ---- ближняя нога ----
   leg(0, false);
@@ -164,15 +335,22 @@ function drawHuman(ctx, px, py, a, s) {
     const ang = face === 1 ? s.aimAng : Math.PI - s.aimAng;
     const hx = sx + Math.cos(ang) * 15, hy = sy + Math.sin(ang) * 15;
     // дальняя рука поддерживает
-    limb(ctx, -1, sy, 9, Math.PI / 2 - ang - 0.5, 6, shade(skin, 0.7));
+    limb(ctx, -1, sy, 9, Math.PI / 2 - ang - 0.5, 6, sleeveCol ? shade(sleeveCol, 0.8) : shade(skin, 0.7));
     drawWeapon(ctx, sx + Math.cos(ang) * 6, sy + Math.sin(ang) * 6, ang, s.aim, s.recoil || 0);
-    ctx.strokeStyle = skin; ctx.lineWidth = 6.4; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(hx, hy); ctx.stroke();
+    // плечо в рукаве, предплечье голое — рука перестаёт быть плоской колбасой
+    const mx = sx + Math.cos(ang) * 7.5, my = sy + Math.sin(ang) * 7.5;
+    ctx.strokeStyle = sleeveCol || skin; ctx.lineWidth = 6.6; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(mx, my); ctx.stroke();
+    ctx.strokeStyle = shade(skin, 0.94); ctx.lineWidth = 5.8;
+    ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(hx, hy); ctx.stroke();
+    ctx.fillStyle = shade(skin, 0.82);
+    ctx.beginPath(); ctx.arc(hx, hy, 2.9, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,238,214,0.16)'; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.moveTo(mx, my - 1.6); ctx.lineTo(hx, hy - 1.6); ctx.stroke();
   } else {
     let ah = walk ? Math.sin(t) * 0.5 : 0.12;
     if (s.dig !== undefined) ah = -1.5 + Math.sin(s.dig * Math.PI) * 2.6;
-    const [ex, ey] = limb(ctx, sx, sy, armL, ah, 6.6, skin);
-    const [hx, hy] = limb(ctx, ex, ey, foreL, ah + 0.25, 5.8, skin);
+    const [hx, hy] = arm(ctx, sx, sy, armL, foreL, ah, skin, 6.4, sleeveCol, false);
     if (s.item === 'pick') drawPickaxe(ctx, hx, hy, ah + 1.1);
     else if (s.item === 'axe') drawAxe(ctx, hx, hy, ah + 1.1);
     else if (s.item === 'club') drawClub(ctx, hx, hy, ah + 1.1);
